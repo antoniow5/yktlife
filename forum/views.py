@@ -2,12 +2,12 @@ from django.shortcuts import render
 from rest_framework import status
 from rest_framework.decorators import api_view
 from rest_framework.response import Response
-from forum.serializers import CategorySerializer
+from forum.serializers import CategorySerializer, TopicSerializer, TopicCreateSerializer
 from .models import Category, Topic, Comment, TopicVote, CommentVote
 from rest_framework.permissions import IsAuthenticated, IsAdminUser
 from rest_framework.decorators import permission_classes
 from rest_framework.exceptions import PermissionDenied
-
+from django.http import Http404
 
 @api_view(['GET','POST'])
 def categories_list(request):
@@ -28,7 +28,110 @@ def categories_list(request):
 
 
 @api_view(['GET','PUT', 'DELETE'])
-def categories_detail(request, id):
+def categories_detail(request, slug):
+    try:
+        category = Category.objects.get(slug = slug)
+    except Category.DoesNotExist:
+        return Response({'message': "Говно"})
+    
+    if request.method == 'GET':
+        serializer = CategorySerializer(category)
+        return Response(serializer.data)
+
+    elif(request.method == 'PUT'):
+        if request.user.is_superuser:
+            serializer = CategorySerializer(category, data=request.data)
+            if serializer.is_valid():
+                serializer.save()
+                return Response(serializer.data,status= status.HTTP_201_CREATED)
+            else:
+                return Response(serializer.errors,status= status.HTTP_400_BAD_REQUEST)
+        else:
+            raise PermissionDenied({"message":"You don't have permission"})
+        
+    elif request.method == 'DELETE':
+        if request.user.is_superuser:
+            category.delete()
+            return Response(status=status.HTTP_204_NO_CONTENT)
+        else:
+            raise PermissionDenied({"message":"You don't have permission"})
+        
+
+
+@api_view(['GET','POST'])
+def topics_list(request):
+    if request.method == 'GET':
+        page = 1
+        offset = 20
+        params = dict(request.GET.lists())
+        if 'cat' in params:
+            if params['cat'][0] == 'all':
+                topics = Topic.objects.all()
+                category_slug = 'all'
+            else:
+                try:
+                    category = Category.objects.get(slug = params['cat'][0])
+                except Exception:
+                    raise Http404
+                topics = Topic.objects.filter(category = category)
+                category_slug = category.slug
+            if not topics.exists():
+                content = {"message": "Опубликованных тем еще нет. Стантьте первым!"}
+                return Response(content, status = status.HTTP_204_NO_CONTENT)
+        else:
+            raise Http404
+        
+        count = topics.count()
+    
+        if 'page' in params and int(params['page'][0]) > 0:
+            page = int(params['page'][0])
+        if 'offset' in params and int(params['offset'][0]) > 0:
+            offset = int(params['offset'][0])
+        try:
+            paginated_topics = topics[(page-1)*offset:page*offset]
+        except Exception as e:
+            raise Http404      
+        
+
+        serializer = TopicSerializer(paginated_topics,many=True)
+        if page*offset < count:
+            has_next = True
+            next_url = f"/api/v1/forum/topics?cat={category_slug}&page={page+1}&offset={offset}"
+        else:
+            has_next = False
+            next_url = None
+        if page > 1:
+            has_previous = True
+            previous_url = f"/api/v1/forum/topics?cat={category_slug}&page={page-1}&offset={offset}"
+        else:
+            has_previous = False
+            previous_url = None
+        return_dict = { 
+                'pages_num' : count / offset,
+                'topics_num': count,
+                'has_next': has_next,
+                'has_previous': has_previous,
+                'next_url': next_url,
+                'previous_url': previous_url,
+                'results': serializer.data
+            }
+
+        return Response(return_dict)
+
+    elif(request.method == 'POST'):
+        if request.user.is_authenticated:
+            serializer = TopicCreateSerializer(data=request.data, context = {'request':request})
+            if serializer.is_valid():
+                serializer.save()
+                return Response(serializer.data,status= status.HTTP_201_CREATED)
+            else:
+                return Response(serializer.errors,status= status.HTTP_400_BAD_REQUEST)
+        else:
+            raise PermissionDenied({"message":"You don't have permission"})
+
+
+@api_view(['GET','PUT', 'DELETE'])
+def topics_detail(request, id):
     try:
         category = Category.objects.get(id = id)
     except Category.DoesNotExist:
@@ -54,3 +157,5 @@ def categories_detail(request, id):
             return Response(status=status.HTTP_204_NO_CONTENT)
         else:
             raise PermissionDenied({"message":"You don't have permission"})
+        
+# 204 NotFound
