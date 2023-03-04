@@ -7,6 +7,8 @@ class Category(models.Model):
     name = models.CharField(max_length= 20)    #Проверить по дизайну максимальную длину названия
     slug = models.SlugField(max_length=10, null = False, blank = False, unique = True)
     description = models.CharField(max_length = 1000)
+    
+   
 
 class Topic(models.Model):
     category = models.ForeignKey(Category, on_delete=models.SET_NULL, null = True)
