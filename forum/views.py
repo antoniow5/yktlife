@@ -8,6 +8,9 @@ from rest_framework.permissions import IsAuthenticated, IsAdminUser
 from rest_framework.decorators import permission_classes
 from rest_framework.exceptions import PermissionDenied
 from django.http import Http404
+from django.core.paginator import Paginator
+
+
 
 @api_view(['GET','POST'])
 def categories_list(request):
@@ -80,37 +83,33 @@ def topics_list(request):
                 return Response(content, status = status.HTTP_204_NO_CONTENT)
         else:
             raise Http404
-        
-        count = topics.count()
-    
+            
         if 'page' in params and int(params['page'][0]) > 0:
             page = int(params['page'][0])
         if 'offset' in params and int(params['offset'][0]) > 0:
             offset = int(params['offset'][0])
+        
+        paginator = Paginator(topics, offset)
         try:
-            paginated_topics = topics[(page-1)*offset:page*offset]
+            paginated_topics = paginator.page(page)
         except Exception as e:
             raise Http404      
         
-
-        serializer = TopicSerializer(paginated_topics,many=True)
-        if page*offset < count:
-            has_next = True
+        paginated_topics_query = TopicSerializer.setup_eager_loading(paginated_topics.object_list)
+        serializer = TopicSerializer(paginated_topics_query,many=True)
+        if paginated_topics.has_next():
             next_url = f"/api/v1/forum/topics?cat={category_slug}&page={page+1}&offset={offset}"
         else:
-            has_next = False
             next_url = None
-        if page > 1:
-            has_previous = True
+        if paginated_topics.has_previous():
             previous_url = f"/api/v1/forum/topics?cat={category_slug}&page={page-1}&offset={offset}"
         else:
-            has_previous = False
             previous_url = None
         return_dict = { 
-                'pages_num' : count / offset,
-                'topics_num': count,
-                'has_next': has_next,
-                'has_previous': has_previous,
+                'pages_num' : paginator.num_pages,
+                'topics_num': paginator.count,
+                'has_next': paginated_topics.has_next(),
+                'has_previous': paginated_topics.has_previous(),
                 'next_url': next_url,
                 'previous_url': previous_url,
                 'results': serializer.data

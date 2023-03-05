@@ -31,6 +31,8 @@ class Topic(models.Model):
             return False
         else:
             return True
+        
+   
 
 class Comment(models.Model):
     created_at = models.DateTimeField(auto_now_add=True)
