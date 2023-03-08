@@ -2,14 +2,15 @@ from django.db import models
 from django.conf import settings
 
 class Category(models.Model):
-    position_column = models.PositiveSmallIntegerField()
-    position_order = models.PositiveSmallIntegerField()
     name = models.CharField(max_length= 20)    #Проверить по дизайну максимальную длину названия
     slug = models.SlugField(max_length=10, null = False, blank = False, unique = True)
     description = models.CharField(max_length = 1000)
+    position_column = models.PositiveSmallIntegerField()
+    position_order = models.PositiveSmallIntegerField()
     can_post = models.BooleanField(default = True)
     can_comment = models.BooleanField(default = True)
-    can_like = models.BooleanField(default = True)
+    can_like = models.BooleanField(default=True)
+    
     # Логотип
     # Логотип на мобиле
     # Возможно позиция на мобиле
@@ -20,13 +21,22 @@ class Category(models.Model):
     def __str__(self):
         return self.name + ' /' + self.slug + ' [' + str(self.position_column) + ',' + str(self.position_order) + ']'  
     
+
+    def save(self, *args, **kwargs):
+        update_down_categories = Category.objects.filter(position_column = self.position_column)
+        for update_down_category in update_down_categories:
+            if update_down_category.position_order >= self.position_order:
+                update_down_category.position_order += 1
+                update_down_category.save()
+        super(Category, self).save(*args, **kwargs)
+
+
 class Tag(models.Model):
     category = models.ForeignKey(Category, on_delete=models.CASCADE)
     name = models.CharField(max_length= 20)    #Проверить по дизайну максимальную длину названия
-    slug = models.CharField(max_length = 10)
 
     def __str__(self):
-        return self.category.name + ' /' + self.name + ' [' + self.slug + ']'  
+        return self.category.name + ' /' + self.name + ' [' + str(self.id) + ']'  
 
 class Topic(models.Model):
     category = models.ForeignKey(Category, on_delete=models.SET_NULL, null = True)
@@ -37,7 +47,14 @@ class Topic(models.Model):
     text = models.CharField(max_length = 10000)
     is_anonymous = models.BooleanField(default=False)
     modified_at = models.DateTimeField(null=True, default = None)
-
+    is_closed = models.BooleanField(default=False)
+    
+    def save(self, *args, **kwargs):
+        if not self.tag == None:
+            if not self.tag.category == self.category:
+                raise ValueError
+            
+        super(Topic, self).save(*args, **kwargs)
         
    
 
@@ -47,7 +64,7 @@ class Comment(models.Model):
     user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE)
     text = models.CharField(max_length = 10000)
     is_anonymous = models.BooleanField(default=False)
-
+    parent = models.ForeignKey("self", null = True, default = None, on_delete=models.CASCADE)
 
 class CommentVote(models.Model):
     comment = models.ForeignKey(Comment, on_delete=models.CASCADE)
