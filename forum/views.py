@@ -2,7 +2,7 @@ from django.shortcuts import render
 from rest_framework import status
 from rest_framework.decorators import api_view
 from rest_framework.response import Response
-from forum.serializers import CategoryListSerializer, CategoryDetailSerializer, TopicListSerializer, TopicAdminCreateSerializer, TopicUserCreateSerializer
+from forum.serializers import CategoryListSerializer, CategoryDetailSerializer, TopicListSerializer, TopicCreateSerializer
 from .models import Category, Tag, Topic, Comment, TopicVote, CommentVote
 from rest_framework.permissions import IsAuthenticated, IsAdminUser
 from rest_framework.decorators import permission_classes
@@ -10,7 +10,7 @@ from rest_framework.exceptions import PermissionDenied
 from django.http import Http404
 from django.core.paginator import Paginator
 from .exceptiondicts import responce_dicts
-
+from django.db.models import Max
 
 
 @api_view(['GET','POST'])
@@ -85,7 +85,11 @@ def topics_list(request):
                 return Response(content, status = status.HTTP_204_NO_CONTENT)
         else:
             return Response(responce_dicts(400), status = status.HTTP_400_BAD_REQUEST)
-        
+        if 'order' in params:
+            if params['order'][0] == 'created':
+                topics = topics.order_by('-created_at')
+            if params['order'][0] == 'comment':
+                topics = topics.annotate(last_comment=Max('comments__created_at')).order_by('-last_comment')
         if 'tag' in params:
             try:
                 tag = Tag.objects.get(id = int(params['tag'][0]))
@@ -138,9 +142,11 @@ def topics_list(request):
     elif(request.method == 'POST'):
         if request.user.is_authenticated:
             if request.user.is_superuser:
-                serializer = TopicAdminCreateSerializer(data = request.data, context = {'request':request})
+
+                serializer = TopicCreateSerializer(data = request.data, context = {'request':request})
             else:
-                serializer = TopicUserCreateSerializer(data=request.data, context = {'request':request})
+                if not Category.objects.get(slug=request.data['category']).can_post:
+                    raise PermissionDenied
             if serializer.is_valid():
                 serializer.save()
                 return Response(status= status.HTTP_201_CREATED)
@@ -150,32 +156,32 @@ def topics_list(request):
             raise PermissionDenied({"message":"You don't have permission"})
 
 
-# @api_view(['GET','PUT', 'DELETE'])
-# def topics_detail(request, id):
-#     try:
-#         category = Category.objects.get(id = id)
-#     except Category.DoesNotExist:
-#         raise Http404
+@api_view(['GET','PUT', 'DELETE'])
+def topics_detail(request, id):
+    try:
+        topic = Topic.objects.get(id = id)
+    except Topic.DoesNotExist:
+        raise Http404
     
-#     if request.method == 'GET':
-#         serializer = CategorySerializer(category)
-#         return Response(serializer.data)
+    if request.method == 'GET':
+        serializer = CategorySerializer(category)
+        return Response(serializer.data)
 
-#     elif(request.method == 'PUT'):
-#         if request.user.is_superuser:
-#             serializer = CategorySerializer(category, data=request.data)
-#             if serializer.is_valid():
-#                 serializer.save()
-#                 return Response(serializer.data,status= status.HTTP_201_CREATED)
-#             return Response(serializer.errors,status= status.HTTP_400_BAD_REQUEST)
-#         else:
-#             raise PermissionDenied({"message":"You don't have permission"})
+    elif(request.method == 'PUT'):
+        if request.user.is_superuser:
+            serializer = CategorySerializer(category, data=request.data)
+            if serializer.is_valid():
+                serializer.save()
+                return Response(serializer.data,status= status.HTTP_201_CREATED)
+            return Response(serializer.errors,status= status.HTTP_400_BAD_REQUEST)
+        else:
+            raise PermissionDenied({"message":"You don't have permission"})
         
-#     elif request.method == 'DELETE':
-#         if request.user.is_superuser:
-#             category.delete()
-#             return Response(status=status.HTTP_204_NO_CONTENT)
-#         else:
-#             raise PermissionDenied({"message":"You don't have permission"})
+    elif request.method == 'DELETE':
+        if request.user.is_superuser:
+            category.delete()
+            return Response(status=status.HTTP_204_NO_CONTENT)
+        else:
+            raise PermissionDenied({"message":"You don't have permission"})
         
 # 204 NotFound

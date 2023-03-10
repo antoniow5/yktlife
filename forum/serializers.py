@@ -35,11 +35,8 @@ class CategoryDetailSerializer(serializers.ModelSerializer):
                   "can_like"]
         
     def get_tags(self, obj):
-        if Tag.objects.filter(category = obj).exists():
-            return TagHelperSerializer(Tag.objects.filter(category = obj), many = True).data
-        else:
-            return None
-    
+        return TagHelperSerializer(Tag.objects.filter(category = obj), many = True).data
+
 class TagListSerializer(serializers.ModelSerializer):
     
     class Meta:
@@ -53,6 +50,7 @@ class TopicListSerializer(serializers.ModelSerializer):
     tag_name = serializers.SerializerMethodField()
     author_nickname = serializers.SerializerMethodField()
     comments_count = serializers.SerializerMethodField()
+    title_1 = serializers.SerializerMethodField()
 
     class Meta:
         model = Topic
@@ -63,11 +61,11 @@ class TopicListSerializer(serializers.ModelSerializer):
                   "created_at", 
                   "is_modified", 
                   "author_nickname", 
-                  "title", 
-                  "text", 
+                  "title_1", 
                   "is_anonymous",
                   "comments_count",
-                  "is_closed"
+                  "is_closed",
+                  "is_removed"
                   ]
         # Добавить каунт коммент и дату последнего коммента
     
@@ -75,7 +73,7 @@ class TopicListSerializer(serializers.ModelSerializer):
         queryset = queryset.select_related('category')
         queryset = queryset.select_related('user')
         queryset = queryset.select_related('tag')
-        queryset = queryset.prefetch_related('comment_set')
+        queryset = queryset.prefetch_related('comments')
         return queryset
     
     def get_author_nickname(self, obj):
@@ -97,9 +95,15 @@ class TopicListSerializer(serializers.ModelSerializer):
             return obj.tag.name
     
     def get_comments_count(self, obj):
-        return obj.comment_set.count()
+        return obj.comments.count()
+    
+    def get_title_1(self, obj):
+        if obj.is_removed == True:
+            return "Данный топик был удален администрацией YktLife."
+        else:
+            return obj.text
 
-class TopicAdminCreateSerializer(serializers.ModelSerializer):
+class TopicCreateSerializer(serializers.ModelSerializer):
     category = serializers.SlugField(read_only = False)
     tag = serializers.IntegerField(allow_null = True, read_only = False)
 
@@ -112,7 +116,8 @@ class TopicAdminCreateSerializer(serializers.ModelSerializer):
         title = self.validated_data['title']
         text = self.validated_data['text']
         is_anonymous = self.validated_data['is_anonymous']
-        category = Category.objects.get(slug = self.validated_data['category'])
+        category = Category.objects.get(slug = self.validated_data['category']) 
+        # Здесь экспешн
         if not self.validated_data['tag'] == None:
             tag = Tag.objects.get(id = self.validated_data['tag'])
         else:
@@ -122,36 +127,13 @@ class TopicAdminCreateSerializer(serializers.ModelSerializer):
     
 
 
-class TopicUserCreateSerializer(serializers.ModelSerializer):
-    category = serializers.SlugField(read_only = False)
-    tag = serializers.IntegerField(allow_null = True)
-
-    class Meta:
-        model = Topic
-        fields = ["category", "title", "text", "is_anonymous", "tag"]
-        
-    def create(self, validated_data):
-        title = self.validated_data['title']
-        text = self.validated_data['text']
-        is_anonymous = self.validated_data['is_anonymous']
-        category = Category.objects.get(slug = self.validated_data['category'])
-        if not self.validated_data['tag'] == None:
-            tag = Tag.objects.get(id = self.validated_data['tag'])
-        else:
-            tag = None
-        if not category.can_post:
-            raise PermissionDenied
-        else:
-            topic = Topic.objects.create(user= self.context['request'].user, title=title, text=text, category=category, is_anonymous = is_anonymous, tag = tag)
-        return topic
-
-
 class TopicDetailSerializer(serializers.ModelSerializer):
+    category_slug = serializers.CharField(source = 'category.slug')
 
     class Meta:
         model = Topic
-        fields = ["name",
-                  "slug", 
+        fields = ["id",
+                  "category_slug", 
                   "description", 
                   "position_column", 
                   "position_order",
