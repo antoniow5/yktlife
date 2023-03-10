@@ -49,6 +49,7 @@ class Topic(models.Model):
     modified_at = models.DateTimeField(null=True, default = None)
     is_closed = models.BooleanField(default=False)
     is_removed = models.BooleanField(default = False)
+    
     def save(self, *args, **kwargs):
         if not self.tag == None:
             if not self.tag.category == self.category:
@@ -64,9 +65,16 @@ class Comment(models.Model):
     user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE)
     text = models.CharField(max_length = 10000)
     is_anonymous = models.BooleanField(default=False)
-    parent = models.ForeignKey("self", null = True, blank = True, on_delete=models.CASCADE)
+    parent = models.ForeignKey("self", null = True, blank = True, on_delete=models.CASCADE, related_name='children')
     is_removed = models.BooleanField(default = False)
 
+    def save(self, *args, **kwargs):
+        if not self.parent == None:
+            if not self.parent.parent == None:
+                raise ValueError
+            
+        super(Comment, self).save(*args, **kwargs)
+        
 
 class CommentVote(models.Model):
     comment = models.ForeignKey(Comment, on_delete=models.CASCADE)

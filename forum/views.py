@@ -2,7 +2,7 @@ from django.shortcuts import render
 from rest_framework import status
 from rest_framework.decorators import api_view
 from rest_framework.response import Response
-from forum.serializers import CategoryListSerializer, CategoryDetailSerializer, TopicListSerializer, TopicCreateSerializer
+from forum.serializers import CategoryListSerializer, CategoryDetailSerializer, TopicListSerializer, TopicCreateSerializer, TopicDetailSerializer
 from .models import Category, Tag, Topic, Comment, TopicVote, CommentVote
 from rest_framework.permissions import IsAuthenticated, IsAdminUser
 from rest_framework.decorators import permission_classes
@@ -90,6 +90,8 @@ def topics_list(request):
                 topics = topics.order_by('-created_at')
             if params['order'][0] == 'comment':
                 topics = topics.annotate(last_comment=Max('comments__created_at')).order_by('-last_comment')
+        else:
+            topics = topics.order_by('-created_at')
         if 'tag' in params:
             try:
                 tag = Tag.objects.get(id = int(params['tag'][0]))
@@ -164,24 +166,24 @@ def topics_detail(request, id):
         raise Http404
     
     if request.method == 'GET':
-        serializer = CategorySerializer(category)
+        serializer = TopicDetailSerializer(topic)
         return Response(serializer.data)
 
-    elif(request.method == 'PUT'):
-        if request.user.is_superuser:
-            serializer = CategorySerializer(category, data=request.data)
-            if serializer.is_valid():
-                serializer.save()
-                return Response(serializer.data,status= status.HTTP_201_CREATED)
-            return Response(serializer.errors,status= status.HTTP_400_BAD_REQUEST)
-        else:
-            raise PermissionDenied({"message":"You don't have permission"})
+#     elif(request.method == 'PUT'):
+#         if request.user.is_superuser:
+#             serializer = TopicDetailSerializer(category, data=request.data)
+#             if serializer.is_valid():
+#                 serializer.save()
+#                 return Response(serializer.data,status= status.HTTP_201_CREATED)
+#             return Response(serializer.errors,status= status.HTTP_400_BAD_REQUEST)
+#         else:
+#             raise PermissionDenied({"message":"You don't have permission"})
         
-    elif request.method == 'DELETE':
-        if request.user.is_superuser:
-            category.delete()
-            return Response(status=status.HTTP_204_NO_CONTENT)
-        else:
-            raise PermissionDenied({"message":"You don't have permission"})
+#     elif request.method == 'DELETE':
+#         if request.user.is_superuser:
+#             category.delete()
+#             return Response(status=status.HTTP_204_NO_CONTENT)
+#         else:
+#             raise PermissionDenied({"message":"You don't have permission"})
         
-# 204 NotFound
+# # 204 NotFound
