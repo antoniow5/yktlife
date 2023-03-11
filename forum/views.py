@@ -2,14 +2,14 @@ from django.shortcuts import render
 from rest_framework import status
 from rest_framework.decorators import api_view
 from rest_framework.response import Response
-from forum.serializers import CategoryListSerializer, CategoryDetailSerializer, TopicListSerializer, TopicCreateSerializer, TopicDetailSerializer
+from forum.serializers import CategoryListSerializer, CategoryDetailSerializer, TopicListSerializer, TopicCreateSerializer, TopicDetailSerializer, TopicCommentsDetailSerializer
 from .models import Category, Tag, Topic, Comment, TopicVote, CommentVote
 from rest_framework.permissions import IsAuthenticated, IsAdminUser
 from rest_framework.decorators import permission_classes
 from rest_framework.exceptions import PermissionDenied
 from django.http import Http404
 from django.core.paginator import Paginator
-from .exceptiondicts import responce_dicts
+# from .exceptiondicts import responce_dicts
 from django.db.models import Max
 
 
@@ -26,10 +26,10 @@ def categories_list(request):
             if serializer.is_valid():
                 serializer.save()
                 return Response(serializer.data,status= status.HTTP_201_CREATED)
-            return Response(responce_dicts(400, serializer.errors),status= status.HTTP_400_BAD_REQUEST)
+            return Response(status= status.HTTP_400_BAD_REQUEST)
         else:
-            # raise PermissionDenied({"message":"You don't have permission"})
-            return Response(responce_dicts(403), status = status.HTTP_403_FORBIDDEN)
+            raise PermissionDenied({"message":"You don't have permission"})
+            # return Response(responce_dicts(403), status = status.HTTP_403_FORBIDDEN)
 
 
 @api_view(['GET','PUT', 'DELETE'])
@@ -37,7 +37,7 @@ def categories_detail(request, slug):
     try:
         category = Category.objects.get(slug = slug)
     except Category.DoesNotExist as e: 
-        return Response(responce_dicts(404, str(e)), status = status.HTTP_404_NOT_FOUND)
+        return Response(status = status.HTTP_404_NOT_FOUND)
     
     if request.method == 'GET':
         serializer = CategoryDetailSerializer(category)
@@ -68,7 +68,8 @@ def topics_list(request):
     if request.method == 'GET':
         page = 1
         offset = 20
-        params = dict(request.GET.lists())
+        params = dict(request.query_params)
+        print(params)
         if 'cat' in params:
             if params['cat'][0] == 'all':
                 topics = Topic.objects.all()
@@ -84,31 +85,35 @@ def topics_list(request):
                 content = {"message": "Опубликованных тем еще нет. Стантьте первым!"}
                 return Response(content, status = status.HTTP_204_NO_CONTENT)
         else:
-            return Response(responce_dicts(400), status = status.HTTP_400_BAD_REQUEST)
+            return Response(status = status.HTTP_400_BAD_REQUEST)
+        topics = topics.annotate(last_comment=Max('comments__created_at'))
         if 'order' in params:
             if params['order'][0] == 'created':
                 topics = topics.order_by('-created_at')
             if params['order'][0] == 'comment':
-                topics = topics.annotate(last_comment=Max('comments__created_at')).order_by('-last_comment')
+                topics = topics.order_by('-last_comment', '-created_at')
         else:
             topics = topics.order_by('-created_at')
         if 'tag' in params:
-            try:
-                tag = Tag.objects.get(id = int(params['tag'][0]))
-            except Exception as e:
-                return Response(responce_dicts(400, str(e)), status = status.HTTP_400_BAD_REQUEST)
+            if params['tag'][0] == 'null':
+                tag = None
+            else:
+                try:
+                    tag = Tag.objects.get(id = int(params['tag'][0]))
+                except Exception as e:
+                    return Response( status = status.HTTP_400_BAD_REQUEST)
             topics = topics.filter(tag = tag)
         
         try:
             if 'page' in params and int(params['page'][0]) > 0: #вот тут поправить чтобы не было исключений сервера. Пейдж может быть не интом
                 page = int(params['page'][0])
         except Exception as e:
-            return Response(responce_dicts(400, str(e)), status = status.HTTP_400_BAD_REQUEST)
+            return Response( status = status.HTTP_400_BAD_REQUEST)
         try:
             if 'offset' in params and int(params['offset'][0]) > 0:
                 offset = int(params['offset'][0])
         except Exception as e:
-            return Response(responce_dicts(400, str(e)), status = status.HTTP_400_BAD_REQUEST)
+            return Response(status = status.HTTP_400_BAD_REQUEST)
 
         
         paginator = Paginator(topics, offset)
@@ -166,24 +171,29 @@ def topics_detail(request, id):
         raise Http404
     
     if request.method == 'GET':
-        serializer = TopicDetailSerializer(topic)
+        params = dict(request.query_params)
+        if 'show' in params:
+            if params['show'][0] == 'simple':
+                serializer = TopicDetailSerializer(topic)
+        else:
+            serializer = TopicCommentsDetailSerializer(topic)
         return Response(serializer.data)
 
-#     elif(request.method == 'PUT'):
-#         if request.user.is_superuser:
-#             serializer = TopicDetailSerializer(category, data=request.data)
-#             if serializer.is_valid():
-#                 serializer.save()
-#                 return Response(serializer.data,status= status.HTTP_201_CREATED)
-#             return Response(serializer.errors,status= status.HTTP_400_BAD_REQUEST)
-#         else:
-#             raise PermissionDenied({"message":"You don't have permission"})
+    # elif(request.method == 'PUT'):
+    #     if request.user.is_superuser:
+    #         serializer = TopicDetailSerializer(category, data=request.data)
+    #         if serializer.is_valid():
+    #             serializer.save()
+    #             return Response(serializer.data,status= status.HTTP_201_CREATED)
+    #         return Response(serializer.errors,status= status.HTTP_400_BAD_REQUEST)
+    #     else:
+    #         raise PermissionDenied({"message":"You don't have permission"})
         
-#     elif request.method == 'DELETE':
-#         if request.user.is_superuser:
-#             category.delete()
-#             return Response(status=status.HTTP_204_NO_CONTENT)
-#         else:
-#             raise PermissionDenied({"message":"You don't have permission"})
+    elif request.method == 'DELETE':
+        if request.user.is_superuser:
+            topic.delete()
+            return Response(status=status.HTTP_204_NO_CONTENT)
+        else:
+            raise PermissionDenied({"message":"You don't have permission"})
         
 # # 204 NotFound

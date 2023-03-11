@@ -9,7 +9,7 @@ class Category(models.Model):
     position_order = models.PositiveSmallIntegerField()
     can_post = models.BooleanField(default = True)
     can_comment = models.BooleanField(default = True)
-    can_like = models.BooleanField(default=True)
+    # can_like = models.BooleanField(default=True)
     
     # Логотип
     # Логотип на мобиле
@@ -72,7 +72,8 @@ class Comment(models.Model):
         if not self.parent == None:
             if not self.parent.parent == None:
                 raise ValueError
-            
+        if not self.parent.topic == self.topic:
+            raise ValueError
         super(Comment, self).save(*args, **kwargs)
         
 

@@ -21,6 +21,7 @@ urlpatterns = [
     re_path('api/v1/forum/categories/$', forum_views.categories_list),
     path('api/v1/forum/categories/<str:slug>', forum_views.categories_detail),
     path('api/v1/forum/categories/<str:slug>/', forum_views.categories_detail),
+    
     re_path('api/v1/forum/topics/$', forum_views.topics_list),
     path('api/v1/forum/topics/<int:id>', forum_views.topics_detail),
     path('api/v1/forum/topics/<int:id>/', forum_views.topics_detail),

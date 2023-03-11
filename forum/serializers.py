@@ -1,8 +1,7 @@
 from rest_framework import serializers
 from forum.models import Category, Tag, Topic, Comment
 from rest_framework.exceptions import PermissionDenied
-from django.db.models import Prefetch
-from rest_framework_recursive.fields import RecursiveField
+from django.db.models import Prefetch, Max
 
 
     
@@ -54,7 +53,8 @@ class TopicListSerializer(serializers.ModelSerializer):
     tag_name = serializers.SerializerMethodField()
     author_nickname = serializers.SerializerMethodField()
     comments_count = serializers.SerializerMethodField()
-    title_1 = serializers.SerializerMethodField()
+    # title_1 = serializers.SerializerMethodField()
+    last_comment_timestamp = serializers.SerializerMethodField()
 
     class Meta:
         model = Topic
@@ -65,11 +65,12 @@ class TopicListSerializer(serializers.ModelSerializer):
                   "created_at", 
                   "is_modified", 
                   "author_nickname", 
-                  "title_1", 
+                  "title", 
                   "is_anonymous",
                   "comments_count",
                   "is_closed",
-                  "is_removed"
+                  "is_removed",
+                  "last_comment_timestamp"
                   ]
         # Добавить каунт коммент и дату последнего коммента
     
@@ -101,12 +102,17 @@ class TopicListSerializer(serializers.ModelSerializer):
     def get_comments_count(self, obj):
         return obj.comments.count()
     
-    def get_title_1(self, obj):
-        if obj.is_removed == True:
-            return "Данный топик был удален администрацией YktLife."
+    # def get_title_1(self, obj):
+    #     if obj.is_removed == True:
+    #         return "Данный топик был удален администрацией YktLife."
+    #     else:
+    #         return obj.title
+    
+    def get_last_comment_timestamp(self, obj):
+        if obj.comments.exists():
+            return obj.last_comment
         else:
-            return obj.title
-
+            return obj.created_at
 class TopicCreateSerializer(serializers.ModelSerializer):
     category = serializers.SlugField(read_only = False)
     tag = serializers.IntegerField(allow_null = True, read_only = False)
@@ -191,14 +197,14 @@ class CommentListHelperSerializer(serializers.ModelSerializer):
     #     replies = obj.children.all().select_related('user').order_by('created_at')
     #     return CommentListChildHelperSerializer(replies, many = True).data
 
-class TopicDetailSerializer(serializers.ModelSerializer):
+class TopicCommentsDetailSerializer(serializers.ModelSerializer):
     is_modified = serializers.SerializerMethodField()
     category_slug = serializers.CharField(source = 'category.slug')
     category_name = serializers.CharField(source = 'category.name')
     tag_name = serializers.SerializerMethodField()
     author_nickname = serializers.SerializerMethodField()
     comments_count = serializers.SerializerMethodField()
-    title_1 = serializers.SerializerMethodField()
+    text_1 = serializers.SerializerMethodField()
     comments = serializers.SerializerMethodField()
 
     class Meta:
@@ -210,8 +216,8 @@ class TopicDetailSerializer(serializers.ModelSerializer):
                   "created_at", 
                   "is_modified", 
                   "author_nickname", 
-                  "title_1",
-                  "text", 
+                  "title",
+                  "text_1", 
                   "is_anonymous",
                   "comments_count",
                   "is_closed",
@@ -248,14 +254,88 @@ class TopicDetailSerializer(serializers.ModelSerializer):
     def get_comments_count(self, obj):
         return obj.comments.count()
     
-    def get_title_1(self, obj):
+    def get_text_1(self, obj):
         if obj.is_removed == True:
             return "Данный топик был удален администрацией YktLife."
         else:
-            return obj.title
+            return obj.text
+    
 
     def get_comments(self, obj):
         comments = obj.comments.all()
         comments = comments.select_related('user').prefetch_related('children').prefetch_related('children__user').filter(parent = None).order_by('created_at')
         return CommentListHelperSerializer(comments, many = True).data
         
+class TopicDetailSerializer(serializers.ModelSerializer):
+    is_modified = serializers.SerializerMethodField()
+    category_slug = serializers.CharField(source = 'category.slug')
+    category_name = serializers.CharField(source = 'category.name')
+    tag_name = serializers.SerializerMethodField()
+    author_nickname = serializers.SerializerMethodField()
+    comments_count = serializers.SerializerMethodField()
+    title_1 = serializers.SerializerMethodField()
+    last_comment_timestamp = serializers.SerializerMethodField()
+    text_1 = serializers.SerializerMethodField()
+    class Meta:
+        model = Topic
+        fields = ["id", 
+                  "category_slug", 
+                  "category_name",
+                  "tag_name",
+                  "created_at", 
+                  "is_modified", 
+                  "author_nickname", 
+                  "title_1", 
+                  "text_1",
+                  "is_anonymous",
+                  "comments_count",
+                  "is_closed",
+                  "is_removed",
+                  "last_comment_timestamp"
+                  ]
+    
+    def setup_eager_loading(queryset):
+        queryset = queryset.select_related('category')
+        queryset = queryset.select_related('user')
+        queryset = queryset.select_related('tag')
+        queryset = queryset.prefetch_related('comments')
+        return queryset
+    
+    def get_author_nickname(self, obj):
+        if obj.is_anonymous:
+            return "Аноним"
+        else:
+            return obj.user.username
+        
+    def get_is_modified(self, obj):
+        if obj.modified_at == None:
+            return False
+        else:
+            return True
+    
+    def get_tag_name(self, obj):
+        if obj.tag == None:
+            return None
+        else:
+            return obj.tag.name
+    
+    def get_comments_count(self, obj):
+        return obj.comments.count()
+    
+    def get_title_1(self, obj):
+        if obj.is_removed == True:
+            return "Данный топик был удален администрацией YktLife."
+        else:
+            return obj.title
+    
+    def get_last_comment_timestamp(self, obj):
+        if obj.comments.exists():
+            return obj.comments.order_by('created_at').last().created_at
+        else:
+            return obj.created_at
+    
+    def get_text_1(self, obj):
+        if obj.is_removed == True:
+            return "Данный топик был удален администрацией YktLife."
+        else:
+            return obj.text
