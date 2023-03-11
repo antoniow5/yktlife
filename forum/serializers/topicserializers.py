@@ -2,7 +2,7 @@ from rest_framework import serializers
 from forum.models import Category, Tag, Topic, Comment
 from rest_framework.exceptions import PermissionDenied
 from django.db.models import Prefetch, Max
-
+import datetime
 
 
 class TopicListSerializer(serializers.ModelSerializer):
@@ -73,7 +73,7 @@ class TopicListSerializer(serializers.ModelSerializer):
             return obj.created_at
         
         
-class TopicCreateSerializer(serializers.ModelSerializer):
+class TopicCreateUpdateSerializer(serializers.ModelSerializer):
     category = serializers.SlugField(read_only = False)
     tag = serializers.IntegerField(allow_null = True, read_only = False)
 
@@ -81,7 +81,13 @@ class TopicCreateSerializer(serializers.ModelSerializer):
     class Meta:
         model = Topic
         fields = ["category", "title", "text", "is_anonymous", "tag"]
-        
+
+    def validate(self, data): 
+        if not Tag.objects.get(id = data['tag']).category == Category.objects.get(slug = data['category']):
+            raise serializers.ValidationError("Тег не относится к данной категории")
+        return data
+
+
     def create(self, validated_data):
         title = self.validated_data['title']
         text = self.validated_data['text']
@@ -95,6 +101,7 @@ class TopicCreateSerializer(serializers.ModelSerializer):
         topic = Topic.objects.create(user= self.context['request'].user, title=title, text=text, category=category, is_anonymous = is_anonymous, tag = tag)
         return topic
 
+ 
 
 class CommentListChildHelperSerializer(serializers.ModelSerializer):
     author_nickname = serializers.SerializerMethodField()
@@ -178,6 +185,7 @@ class TopicCommentsDetailSerializer(serializers.ModelSerializer):
                   "comments_count",
                   "is_closed",
                   "is_removed",
+                  "modified_at",
                   "comments"
                   ]
         # Добавить каунт коммент и дату последнего коммента
@@ -247,7 +255,8 @@ class TopicDetailSerializer(serializers.ModelSerializer):
                   "comments_count",
                   "is_closed",
                   "is_removed",
-                  "last_comment_timestamp"
+                  "last_comment_timestamp",
+                  "modified_at"
                   ]
     
     def setup_eager_loading(queryset):
@@ -295,3 +304,18 @@ class TopicDetailSerializer(serializers.ModelSerializer):
             return "Данный топик был удален администрацией YktLife."
         else:
             return obj.text
+
+class TopicEditSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Topic
+        fields = [                   
+                  "title", 
+                  "text"
+                  ]
+    def update(self, instance, validated_data):
+        instance.title = validated_data.get('title', instance.title)
+        instance.text = validated_data.get('text', instance.text)
+        instance.is_modified = True
+        instance.modified_at = datetime.datetime.now()  
+        instance.save()
+        return instance

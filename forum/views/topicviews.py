@@ -2,7 +2,7 @@ from django.shortcuts import render
 from rest_framework import status
 from rest_framework.decorators import api_view
 from rest_framework.response import Response
-from forum.serializers import TopicListSerializer, TopicCreateSerializer, TopicDetailSerializer, TopicCommentsDetailSerializer
+from forum.serializers import TopicListSerializer, TopicCreateUpdateSerializer, TopicDetailSerializer, TopicCommentsDetailSerializer, TopicEditSerializer
 from ..models import Category, Tag, Topic, Comment, TopicVote, CommentVote
 from rest_framework.permissions import IsAuthenticated, IsAdminUser
 from rest_framework.decorators import permission_classes
@@ -100,7 +100,7 @@ def topics_list(request):
         if request.user.is_authenticated:
             if request.user.is_superuser:
 
-                serializer = TopicCreateSerializer(data = request.data, context = {'request':request})
+                serializer = TopicCreateUpdateSerializer(data = request.data, context = {'request':request})
             else:
                 if not Category.objects.get(slug=request.data['category']).can_post:
                     raise PermissionDenied
@@ -113,7 +113,7 @@ def topics_list(request):
             raise PermissionDenied({"message":"You don't have permission"})
 
 
-@api_view(['GET','PUT', 'DELETE'])
+@api_view(['GET','PATCH', 'DELETE'])
 def topics_detail(request, id):
     try:
         topic = Topic.objects.get(id = id)
@@ -129,15 +129,15 @@ def topics_detail(request, id):
             serializer = TopicCommentsDetailSerializer(topic)
         return Response(serializer.data)
 
-    # elif(request.method == 'PUT'):
-    #     if request.user.is_superuser:
-    #         serializer = TopicDetailSerializer(category, data=request.data)
-    #         if serializer.is_valid():
-    #             serializer.save()
-    #             return Response(serializer.data,status= status.HTTP_201_CREATED)
-    #         return Response(serializer.errors,status= status.HTTP_400_BAD_REQUEST)
-    #     else:
-    #         raise PermissionDenied({"message":"You don't have permission"})
+    elif(request.method == 'PATCH'):
+        if request.user.is_superuser:
+            serializer = TopicEditSerializer(topic, data=request.data)
+            if serializer.is_valid():
+                serializer.save()
+                return Response(serializer.data,status= status.HTTP_201_CREATED)
+            return Response(serializer.errors,status= status.HTTP_400_BAD_REQUEST)
+        else:
+            raise PermissionDenied({"message":"You don't have permission"})
         
     elif request.method == 'DELETE':
         if request.user.is_superuser:
