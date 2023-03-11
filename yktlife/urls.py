@@ -16,6 +16,15 @@ Including another URLconf
 from django.contrib import admin
 from django.urls import path, include, re_path
 from forum import views as forum_views
+
+
+from rest_framework.views import exception_handler
+from http import HTTPStatus
+from typing import Any
+
+from rest_framework.views import Response
+
+
 urlpatterns = [
     path('admin/', admin.site.urls),
     re_path('api/v1/forum/categories/$', forum_views.categories_list),
@@ -27,3 +36,31 @@ urlpatterns = [
     path('api/v1/forum/topics/<int:id>/', forum_views.topics_detail),
     path('__debug__/', include('debug_toolbar.urls'))
 ]
+
+def api_exception_handler(exc: Exception, context: dict[str, Any]) -> Response:
+    """Custom API exception handler."""
+
+    # Call REST framework's default exception handler first,
+    # to get the standard error response.
+    response = exception_handler(exc, context)
+
+    if response is not None:
+        # Using the description's of the HTTPStatus class as error message.
+        http_code_to_message = {v.value: v.description for v in HTTPStatus}
+
+        error_payload = {
+            "error": {
+                "status_code": 0,
+                "message": "",
+                "details": [],
+            }
+        }
+        error = error_payload["error"]
+        status_code = response.status_code
+
+        error["status_code"] = status_code
+        error["message"] = http_code_to_message[status_code]
+        error["details"] = response.data
+        response.data = error_payload
+    return response
+

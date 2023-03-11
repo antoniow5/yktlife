@@ -133,3 +133,7 @@ INTERNAL_IPS = [
     # ...
 ]
 
+REST_FRAMEWORK = {
+  
+    "EXCEPTION_HANDLER": "yktlife.urls.api_exception_handler",
+}
