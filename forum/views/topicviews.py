@@ -38,7 +38,9 @@ def topics_list(request):
                 return Response(content, status = status.HTTP_204_NO_CONTENT)
         else:
             return Response(status = status.HTTP_400_BAD_REQUEST)
+        
         topics = topics.annotate(last_comment=Max('comments__created_at'))
+
         if 'order' in params:
             if params['order'][0] == 'created':
                 topics = topics.order_by('-created_at')

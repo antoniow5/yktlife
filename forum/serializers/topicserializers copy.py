@@ -6,13 +6,7 @@ from django.db.models import Prefetch, Exists, OuterRef, Max, Count
 import datetime
 from django.db.models import Q
 
-class TopicListSerializer(serializers.Serializer):
-    id = serializers.IntegerField()
-    created_at = serializers.DateTimeField()
-    title = serializers.CharField()
-    is_anonymous = serializers.BooleanField()
-    is_closed = serializers.BooleanField()
-    is_removed = serializers.BooleanField()
+class TopicListSerializer(serializers.ModelSerializer):
     is_modified = serializers.SerializerMethodField()
     category_slug = serializers.CharField(source = 'category.slug')
     category_name = serializers.CharField(source = 'category.name')
@@ -23,23 +17,24 @@ class TopicListSerializer(serializers.Serializer):
     last_comment_timestamp = serializers.SerializerMethodField()
     likes_count = serializers.SerializerMethodField()
 
-    # class Meta:
-    #     fields = ["id", last_comment_timestamp
-    #               "category_slug", 
-    #               "category_name",
-    #               "tag_name",
-    #               "created_at", 
-    #               "is_modified", 
-    #               "author_nickname", 
-    #               "title", 
-    #               "is_anonymous",
-    #               "comments_count",
-    #               "is_closed",
-    #               "is_removed",
-    #               "",
-    #               "likes_count"
-    #               ]
-    #     read_only_fields = fields
+    class Meta:
+        model = Topic
+        fields = ["id", 
+                  "category_slug", 
+                  "category_name",
+                  "tag_name",
+                  "created_at", 
+                  "is_modified", 
+                  "author_nickname", 
+                  "title", 
+                  "is_anonymous",
+                  "comments_count",
+                  "is_closed",
+                  "is_removed",
+                  "last_comment_timestamp",
+                  "likes_count"
+                  ]
+        read_only_fields = fields
         # Добавить каунт коммент и дату последнего коммента
     
     def setup_eager_loading(queryset1):

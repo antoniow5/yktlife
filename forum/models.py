@@ -43,17 +43,23 @@ class Tag(models.Model):
 
 
 class Topic(models.Model):
-    category = models.ForeignKey(Category, on_delete=models.SET_NULL, null = True)
-    tag = models.ForeignKey(Tag, on_delete=models.SET_NULL, null = True, default= None)
+    category = models.ForeignKey(Category, on_delete=models.SET_NULL, null = True, db_index = True)
+    tag = models.ForeignKey(Tag, on_delete=models.SET_NULL, null = True, default= None, )
     created_at = models.DateTimeField(auto_now_add=True)
-    user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE)
+    user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name='topics')
     title = models.CharField(max_length=30) #Проверить по дизайну максимальную длину топика
     text = models.CharField(max_length = 10000)
     is_anonymous = models.BooleanField(default=False)
     modified_at = models.DateTimeField(null=True, default = None)
     is_closed = models.BooleanField(default=False)
     is_removed = models.BooleanField(default = False)
+    class Meta:
+        indexes = [
+                models.Index(fields=['category']),
+                models.Index(fields=['category', 'tag', 'user']),
+                models.Index(fields=['created_at']),
 
+            ]
     def save(self, *args, **kwargs):
         if not self.tag == None:
             if not self.tag.category == self.category:
@@ -76,10 +82,16 @@ class Comment(models.Model):
         if not self.parent == None:
             if not self.parent.parent == None:
                 raise ValueError
-        if not self.parent.topic == self.topic:
-            raise ValueError
+            if not self.parent.topic == self.topic:
+                raise ValueError
         super(Comment, self).save(*args, **kwargs)
-        
+    class Meta:
+        indexes = [
+                models.Index(fields=['created_at']),
+                models.Index(fields=['topic']),
+                models.Index(fields=['user'])
+
+            ]
 
 class TopicLike(models.Model):
     topic = models.ForeignKey(Topic, on_delete=models.CASCADE, related_name='topiclikes')
@@ -87,6 +99,13 @@ class TopicLike(models.Model):
 
     class Meta:
         unique_together = ('user', 'topic')
+        indexes = [
+
+                models.Index(fields=['topic']),
+                models.Index(fields=['user'])
+
+            ]
+
 
 class CommentLike(models.Model):
     comment = models.ForeignKey(Comment, on_delete=models.CASCADE, related_name='commentlikes')
