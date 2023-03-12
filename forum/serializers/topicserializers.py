@@ -1,7 +1,8 @@
 from rest_framework import serializers
-from forum.models import Category, Tag, Topic, Comment, Like
+from forum.models import Category, Tag, Topic, Comment, CommentLike
+from django.contrib.auth.models import User
 from rest_framework.exceptions import PermissionDenied
-from django.db.models import Prefetch, Max
+from django.db.models import Prefetch, Exists, OuterRef
 import datetime
 from django.db.models import Q
 
@@ -39,7 +40,7 @@ class TopicListSerializer(serializers.ModelSerializer):
         queryset = queryset.select_related('user')
         queryset = queryset.select_related('tag')
         queryset = queryset.prefetch_related('comments')
-        queryset = queryset.prefetch_related('likes')
+        queryset = queryset.prefetch_related('topiclikes')
         return queryset
     
     def get_author_nickname(self, obj):
@@ -76,7 +77,7 @@ class TopicListSerializer(serializers.ModelSerializer):
             return obj.created_at
         
     def get_likes_count(self, obj):
-        return obj.likes.all().count()
+        return obj.topiclikes.all().count()
     
 class TopicCreateUpdateSerializer(serializers.ModelSerializer):
     category = serializers.SlugField(read_only = False)
@@ -113,7 +114,7 @@ class CommentListChildHelperSerializer(serializers.ModelSerializer):
     author_nickname = serializers.SerializerMethodField()
     text_1 = serializers.SerializerMethodField()
     likes_count = serializers.SerializerMethodField()
-    did_like = serializers.SerializerMethodField()
+    did_like = serializers.BooleanField()
 
     class Meta:
         model = Comment
@@ -141,18 +142,18 @@ class CommentListChildHelperSerializer(serializers.ModelSerializer):
             return obj.user.username
 
     def get_likes_count(self, obj):
-        return obj.likes.all().count()
+        return obj.commentlikes.all().count()
 
-    def get_did_like(self, obj):
-        return obj.likes.filter(user = self.context['request'].user).exists()
-
+    # def get_did_like(self, obj):
+    #     return CommentLike.objects.filter(user = self.context['request'].user, comment = obj)
     
 class CommentListHelperSerializer(serializers.ModelSerializer):
     author_nickname = serializers.SerializerMethodField()
     text_1 = serializers.SerializerMethodField()
     children = CommentListChildHelperSerializer(many = True)
+    # children1 = serializers.SerializerMethodField()
     likes_count = serializers.SerializerMethodField()
-    did_like = serializers.SerializerMethodField()
+    did_like = serializers.BooleanField()
 
     class Meta:
         model = Comment
@@ -181,13 +182,10 @@ class CommentListHelperSerializer(serializers.ModelSerializer):
             return obj.user.username
     
     def get_likes_count(self, obj):
-        return obj.likes.all().count()
+        return obj.commentlikes.all().count()
 
-    def get_did_like(self, obj):
-        # return obj.likes.filter(user = self.context['request'].user).exists()
-        criterion1 = Q(content_type=10)
-        criterion2 = Q(object_id=obj.id)
-        return self.context['user_likes'].filter(criterion1 & criterion2)
+
+
 
     
 class TopicCommentsDetailSerializer(serializers.ModelSerializer):
@@ -259,16 +257,15 @@ class TopicCommentsDetailSerializer(serializers.ModelSerializer):
             return obj.text
         
     def get_likes_count(self, obj):
-        return obj.likes.all().count()
+        return obj.topiclikes.all().count()
 
     def get_did_like(self, obj):
-        return obj.likes.filter(user = self.context['request'].user).exists()
+        return obj.topiclikes.filter(user = self.context['request'].user).exists()
     
     def get_comments(self, obj):
-        comments = obj.comments.all()
-        comments = comments.select_related('user').prefetch_related('children').prefetch_related('children__user').prefetch_related('likes').prefetch_related('children__likes').filter(parent = None).order_by('created_at')
-        self.context['user_likes'] = self.context['request'].user.liked_by.select_related('user')
-        return CommentListHelperSerializer(comments, many = True, context = self.context).data
+        comments_annotated = obj.comments.all()
+        comments_annotated = comments_annotated.select_related('user').prefetch_related('commentlikes').prefetch_related(Prefetch('children', Comment.objects.filter(topic = obj).annotate(did_like = Exists(CommentLike.objects.filter(user=self.context['request'].user, comment_id=OuterRef('pk')))))).prefetch_related('children__user').prefetch_related('children__commentlikes').annotate(did_like = Exists(CommentLike.objects.filter(user=self.context['request'].user, comment_id=OuterRef('pk')))).filter(parent = None).order_by('created_at')
+        return CommentListHelperSerializer(comments_annotated, many = True).data
         
 class TopicDetailSerializer(serializers.ModelSerializer):
     is_modified = serializers.SerializerMethodField()
@@ -277,7 +274,6 @@ class TopicDetailSerializer(serializers.ModelSerializer):
     tag_name = serializers.SerializerMethodField()
     author_nickname = serializers.SerializerMethodField()
     comments_count = serializers.SerializerMethodField()
-    title_1 = serializers.SerializerMethodField()
     last_comment_timestamp = serializers.SerializerMethodField()
     text_1 = serializers.SerializerMethodField()
     likes_count = serializers.SerializerMethodField()
@@ -346,10 +342,10 @@ class TopicDetailSerializer(serializers.ModelSerializer):
             return obj.text
         
     def get_likes_count(self, obj):
-        return obj.likes.all().count()
+        return obj.topiclikes.all().count()
 
     def get_did_like(self, obj):
-        return obj.likes.filter(user = self.context['request'].user).exists()
+        return obj.topiclikes.filter(user = self.context['request'].user).exists()
 
 class TopicEditSerializer(serializers.ModelSerializer):
     class Meta:

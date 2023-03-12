@@ -3,7 +3,7 @@ from rest_framework import status
 from rest_framework.decorators import api_view
 from rest_framework.response import Response
 from forum.serializers import TopicListSerializer, TopicCreateUpdateSerializer, TopicDetailSerializer, TopicCommentsDetailSerializer, TopicEditSerializer
-from ..models import Category, Tag, Topic, Comment, Like
+from ..models import Category, Tag, Topic, Comment
 from rest_framework.permissions import IsAuthenticated, IsAdminUser
 from rest_framework.decorators import permission_classes
 from rest_framework.exceptions import PermissionDenied
@@ -126,7 +126,7 @@ def topics_detail(request, id):
         params = dict(request.query_params)
         if 'show' in params:
             if params['show'][0] == 'simple':
-                serializer = TopicDetailSerializer(topic)
+                serializer = TopicDetailSerializer(topic, context = {'request':request})
         else:
             serializer = TopicCommentsDetailSerializer(topic, context = {'request':request})
         return Response(serializer.data)

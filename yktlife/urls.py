@@ -35,6 +35,8 @@ urlpatterns = [
     path('api/v1/forum/topics/<int:id>', forum_views.topics_detail),
     path('api/v1/forum/topics/<int:id>/', forum_views.topics_detail),
 
+    path('api/v1/forum/topics/<int:id>/like', forum_views.like_topic),
+    path('api/v1/forum/topics/<int:id>/like/', forum_views.like_topic),
     
     path('__debug__/', include('debug_toolbar.urls'))
 ]
