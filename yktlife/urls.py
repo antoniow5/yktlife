@@ -34,6 +34,8 @@ urlpatterns = [
     re_path('api/v1/forum/topics/$', forum_views.topics_list),
     path('api/v1/forum/topics/<int:id>', forum_views.topics_detail),
     path('api/v1/forum/topics/<int:id>/', forum_views.topics_detail),
+
+    
     path('__debug__/', include('debug_toolbar.urls'))
 ]
 

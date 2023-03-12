@@ -11,6 +11,8 @@ from django.http import Http404
 from django.core.paginator import Paginator
 # from .exceptiondicts import responce_dicts
 from django.db.models import Max
+from django.utils import timezone
+from datetime import timedelta, datetime
 
 
 @api_view(['GET','POST'])
@@ -136,7 +138,17 @@ def topics_detail(request, id):
                 serializer.save()
                 return Response(serializer.data,status= status.HTTP_201_CREATED)
             return Response(serializer.errors,status= status.HTTP_400_BAD_REQUEST)
-        else:
+        elif request.user == topic.user:
+            if timezone.now() - topic.created_at < timedelta(hours = 1):
+                serializer = TopicEditSerializer(topic, data=request.data)
+                if serializer.is_valid():
+                    serializer.save()
+                    return Response(serializer.data,status= status.HTTP_201_CREATED)
+                else:
+                    return Response(serializer.errors,status= status.HTTP_400_BAD_REQUEST)
+            else: 
+                return Response(f'Вы не можете редактировать топик, так как прошло более {timezone.now() - topic.created_at} минут', status= status.HTTP_400_BAD_REQUEST)
+        else: 
             raise PermissionDenied({"message":"You don't have permission"})
         
     elif request.method == 'DELETE':
@@ -145,5 +157,11 @@ def topics_detail(request, id):
             return Response(status=status.HTTP_204_NO_CONTENT)
         else:
             raise PermissionDenied({"message":"You don't have permission"})
-        
+        # Поправить таймзоны
+        # Поправить таймзоны
+        # Поправить таймзоны
+        # Поправить таймзоны
+        # Поправить таймзоны
+        # Поправить таймзоны
+        # Поправить таймзоны
 # # 204 NotFound

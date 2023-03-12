@@ -1,5 +1,9 @@
 from django.db import models
 from django.conf import settings
+from django.contrib.contenttypes.fields import GenericForeignKey
+from django.contrib.contenttypes.models import ContentType
+from django.contrib.contenttypes.fields import GenericRelation
+
 
 class Category(models.Model):
     name = models.CharField(max_length= 20)    #Проверить по дизайну максимальную длину названия
@@ -38,6 +42,12 @@ class Tag(models.Model):
     def __str__(self):
         return self.category.name + ' /' + self.name + ' [' + str(self.id) + ']'  
 
+class Like(models.Model):
+    content_type = models.ForeignKey(ContentType, on_delete=models.CASCADE)
+    voted_object_id = models.PositiveIntegerField()
+    voted_object = models.GenericForeignKey('content_type', 'voted_object_id')
+    user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE)
+
 class Topic(models.Model):
     category = models.ForeignKey(Category, on_delete=models.SET_NULL, null = True)
     tag = models.ForeignKey(Tag, on_delete=models.SET_NULL, null = True, default= None)
@@ -49,7 +59,8 @@ class Topic(models.Model):
     modified_at = models.DateTimeField(null=True, default = None)
     is_closed = models.BooleanField(default=False)
     is_removed = models.BooleanField(default = False)
-    
+    likes = GenericRelation(Like, related_query_name='topic')
+
     def save(self, *args, **kwargs):
         if not self.tag == None:
             if not self.tag.category == self.category:
@@ -67,6 +78,7 @@ class Comment(models.Model):
     is_anonymous = models.BooleanField(default=False)
     parent = models.ForeignKey("self", null = True, blank = True, on_delete=models.CASCADE, related_name='children')
     is_removed = models.BooleanField(default = False)
+    likes = GenericRelation(Like, related_query_name='comment')
 
     def save(self, *args, **kwargs):
         if not self.parent == None:
@@ -77,13 +89,8 @@ class Comment(models.Model):
         super(Comment, self).save(*args, **kwargs)
         
 
-class CommentVote(models.Model):
-    comment = models.ForeignKey(Comment, on_delete=models.CASCADE)
-    user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE)
 
 
-class TopicVote(models.Model):
-    topic = models.ForeignKey(Topic, on_delete = models.CASCADE)
-    user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE)
+
 
     # https://stackoverflow.com/questions/62131125/vote-only-once-in-django-to-posts-and-comments

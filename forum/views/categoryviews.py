@@ -27,7 +27,8 @@ def categories_list(request):
             if serializer.is_valid():
                 serializer.save()
                 return Response(serializer.data,status= status.HTTP_201_CREATED)
-            return Response(status= status.HTTP_400_BAD_REQUEST)
+            else:
+                return Response(status= status.HTTP_400_BAD_REQUEST)
         else:
             raise PermissionDenied({"message":"You don't have permission"})
             # return Response(responce_dicts(403), status = status.HTTP_403_FORBIDDEN)

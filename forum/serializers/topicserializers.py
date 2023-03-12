@@ -83,8 +83,9 @@ class TopicCreateUpdateSerializer(serializers.ModelSerializer):
         fields = ["category", "title", "text", "is_anonymous", "tag"]
 
     def validate(self, data): 
-        if not Tag.objects.get(id = data['tag']).category == Category.objects.get(slug = data['category']):
-            raise serializers.ValidationError("Тег не относится к данной категории")
+        if not data['tag'] == None:
+            if not Tag.objects.get(id = data['tag']).category == Category.objects.get(slug = data['category']):
+                raise serializers.ValidationError("Тег не относится к данной категории")
         return data
 
 
@@ -249,7 +250,7 @@ class TopicDetailSerializer(serializers.ModelSerializer):
                   "created_at", 
                   "is_modified", 
                   "author_nickname", 
-                  "title_1", 
+                  "title", 
                   "text_1",
                   "is_anonymous",
                   "comments_count",
@@ -287,11 +288,6 @@ class TopicDetailSerializer(serializers.ModelSerializer):
     def get_comments_count(self, obj):
         return obj.comments.count()
     
-    def get_title_1(self, obj):
-        if obj.is_removed == True:
-            return "Данный топик был удален администрацией YktLife."
-        else:
-            return obj.title
     
     def get_last_comment_timestamp(self, obj):
         if obj.comments.exists():
