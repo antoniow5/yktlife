@@ -4,7 +4,6 @@ from django.contrib.contenttypes.fields import GenericForeignKey
 from django.contrib.contenttypes.models import ContentType
 from django.contrib.contenttypes.fields import GenericRelation
 
-
 class Category(models.Model):
     name = models.CharField(max_length= 20)    #Проверить по дизайну максимальную длину названия
     slug = models.SlugField(max_length=10, null = False, blank = False, unique = True)
@@ -44,9 +43,13 @@ class Tag(models.Model):
 
 class Like(models.Model):
     content_type = models.ForeignKey(ContentType, on_delete=models.CASCADE)
-    voted_object_id = models.PositiveIntegerField()
-    voted_object = models.GenericForeignKey('content_type', 'voted_object_id')
-    user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE)
+    object_id = models.PositiveIntegerField()
+    voted_object = GenericForeignKey('content_type', 'object_id')
+    user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name='liked_by')
+
+    class Meta:
+        unique_together = ('user', 'object_id', 'content_type')
+
 
 class Topic(models.Model):
     category = models.ForeignKey(Category, on_delete=models.SET_NULL, null = True)
@@ -59,7 +62,7 @@ class Topic(models.Model):
     modified_at = models.DateTimeField(null=True, default = None)
     is_closed = models.BooleanField(default=False)
     is_removed = models.BooleanField(default = False)
-    likes = GenericRelation(Like, related_query_name='topic')
+    likes = GenericRelation(Like)
 
     def save(self, *args, **kwargs):
         if not self.tag == None:
@@ -78,7 +81,7 @@ class Comment(models.Model):
     is_anonymous = models.BooleanField(default=False)
     parent = models.ForeignKey("self", null = True, blank = True, on_delete=models.CASCADE, related_name='children')
     is_removed = models.BooleanField(default = False)
-    likes = GenericRelation(Like, related_query_name='comment')
+    likes = GenericRelation(Like)
 
     def save(self, *args, **kwargs):
         if not self.parent == None:

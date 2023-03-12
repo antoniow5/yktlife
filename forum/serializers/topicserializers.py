@@ -1,9 +1,9 @@
 from rest_framework import serializers
-from forum.models import Category, Tag, Topic, Comment
+from forum.models import Category, Tag, Topic, Comment, Like
 from rest_framework.exceptions import PermissionDenied
 from django.db.models import Prefetch, Max
 import datetime
-
+from django.db.models import Q
 
 class TopicListSerializer(serializers.ModelSerializer):
     is_modified = serializers.SerializerMethodField()
@@ -13,6 +13,7 @@ class TopicListSerializer(serializers.ModelSerializer):
     author_nickname = serializers.SerializerMethodField()
     comments_count = serializers.SerializerMethodField()
     last_comment_timestamp = serializers.SerializerMethodField()
+    likes_count = serializers.SerializerMethodField()
 
     class Meta:
         model = Topic
@@ -28,7 +29,8 @@ class TopicListSerializer(serializers.ModelSerializer):
                   "comments_count",
                   "is_closed",
                   "is_removed",
-                  "last_comment_timestamp"
+                  "last_comment_timestamp",
+                  "likes_count"
                   ]
         # Добавить каунт коммент и дату последнего коммента
     
@@ -37,6 +39,7 @@ class TopicListSerializer(serializers.ModelSerializer):
         queryset = queryset.select_related('user')
         queryset = queryset.select_related('tag')
         queryset = queryset.prefetch_related('comments')
+        queryset = queryset.prefetch_related('likes')
         return queryset
     
     def get_author_nickname(self, obj):
@@ -72,7 +75,9 @@ class TopicListSerializer(serializers.ModelSerializer):
         else:
             return obj.created_at
         
-        
+    def get_likes_count(self, obj):
+        return obj.likes.all().count()
+    
 class TopicCreateUpdateSerializer(serializers.ModelSerializer):
     category = serializers.SlugField(read_only = False)
     tag = serializers.IntegerField(allow_null = True, read_only = False)
@@ -107,6 +112,8 @@ class TopicCreateUpdateSerializer(serializers.ModelSerializer):
 class CommentListChildHelperSerializer(serializers.ModelSerializer):
     author_nickname = serializers.SerializerMethodField()
     text_1 = serializers.SerializerMethodField()
+    likes_count = serializers.SerializerMethodField()
+    did_like = serializers.SerializerMethodField()
 
     class Meta:
         model = Comment
@@ -116,7 +123,9 @@ class CommentListChildHelperSerializer(serializers.ModelSerializer):
             'is_anonymous',
             'author_nickname',
             'is_removed',
-            'text_1'
+            'text_1',
+            "likes_count",
+            "did_like"
         ]
     
     def get_text_1(self, obj):
@@ -131,11 +140,19 @@ class CommentListChildHelperSerializer(serializers.ModelSerializer):
         else:
             return obj.user.username
 
+    def get_likes_count(self, obj):
+        return obj.likes.all().count()
 
+    def get_did_like(self, obj):
+        return obj.likes.filter(user = self.context['request'].user).exists()
+
+    
 class CommentListHelperSerializer(serializers.ModelSerializer):
     author_nickname = serializers.SerializerMethodField()
     text_1 = serializers.SerializerMethodField()
     children = CommentListChildHelperSerializer(many = True)
+    likes_count = serializers.SerializerMethodField()
+    did_like = serializers.SerializerMethodField()
 
     class Meta:
         model = Comment
@@ -146,6 +163,8 @@ class CommentListHelperSerializer(serializers.ModelSerializer):
             'author_nickname',
             'is_removed',
             'text_1',
+            "likes_count",
+            "did_like",
             'children'
         ]
     
@@ -161,6 +180,16 @@ class CommentListHelperSerializer(serializers.ModelSerializer):
         else:
             return obj.user.username
     
+    def get_likes_count(self, obj):
+        return obj.likes.all().count()
+
+    def get_did_like(self, obj):
+        # return obj.likes.filter(user = self.context['request'].user).exists()
+        criterion1 = Q(content_type=10)
+        criterion2 = Q(object_id=obj.id)
+        return self.context['user_likes'].filter(criterion1 & criterion2)
+
+    
 class TopicCommentsDetailSerializer(serializers.ModelSerializer):
     is_modified = serializers.SerializerMethodField()
     category_slug = serializers.CharField(source = 'category.slug')
@@ -170,6 +199,8 @@ class TopicCommentsDetailSerializer(serializers.ModelSerializer):
     comments_count = serializers.SerializerMethodField()
     text_1 = serializers.SerializerMethodField()
     comments = serializers.SerializerMethodField()
+    likes_count = serializers.SerializerMethodField()
+    did_like = serializers.SerializerMethodField()
 
     class Meta:
         model = Topic
@@ -187,6 +218,8 @@ class TopicCommentsDetailSerializer(serializers.ModelSerializer):
                   "is_closed",
                   "is_removed",
                   "modified_at",
+                  "likes_count",
+                  "did_like",
                   "comments"
                   ]
         # Добавить каунт коммент и дату последнего коммента
@@ -224,12 +257,18 @@ class TopicCommentsDetailSerializer(serializers.ModelSerializer):
             return "Данный топик был удален администрацией YktLife."
         else:
             return obj.text
-    
+        
+    def get_likes_count(self, obj):
+        return obj.likes.all().count()
 
+    def get_did_like(self, obj):
+        return obj.likes.filter(user = self.context['request'].user).exists()
+    
     def get_comments(self, obj):
         comments = obj.comments.all()
-        comments = comments.select_related('user').prefetch_related('children').prefetch_related('children__user').filter(parent = None).order_by('created_at')
-        return CommentListHelperSerializer(comments, many = True).data
+        comments = comments.select_related('user').prefetch_related('children').prefetch_related('children__user').prefetch_related('likes').prefetch_related('children__likes').filter(parent = None).order_by('created_at')
+        self.context['user_likes'] = self.context['request'].user.liked_by.select_related('user')
+        return CommentListHelperSerializer(comments, many = True, context = self.context).data
         
 class TopicDetailSerializer(serializers.ModelSerializer):
     is_modified = serializers.SerializerMethodField()
@@ -241,6 +280,9 @@ class TopicDetailSerializer(serializers.ModelSerializer):
     title_1 = serializers.SerializerMethodField()
     last_comment_timestamp = serializers.SerializerMethodField()
     text_1 = serializers.SerializerMethodField()
+    likes_count = serializers.SerializerMethodField()
+    did_like = serializers.SerializerMethodField()
+
     class Meta:
         model = Topic
         fields = ["id", 
@@ -257,7 +299,9 @@ class TopicDetailSerializer(serializers.ModelSerializer):
                   "is_closed",
                   "is_removed",
                   "last_comment_timestamp",
-                  "modified_at"
+                  "modified_at",
+                  "likes_count",
+                  "did_like"
                   ]
     
     def setup_eager_loading(queryset):
@@ -300,6 +344,12 @@ class TopicDetailSerializer(serializers.ModelSerializer):
             return "Данный топик был удален администрацией YktLife."
         else:
             return obj.text
+        
+    def get_likes_count(self, obj):
+        return obj.likes.all().count()
+
+    def get_did_like(self, obj):
+        return obj.likes.filter(user = self.context['request'].user).exists()
 
 class TopicEditSerializer(serializers.ModelSerializer):
     class Meta:
