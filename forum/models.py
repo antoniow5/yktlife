@@ -43,7 +43,7 @@ class Tag(models.Model):
 
 
 class Topic(models.Model):
-    category = models.ForeignKey(Category, on_delete=models.SET_NULL, null = True, db_index = True)
+    category = models.ForeignKey(Category, on_delete=models.CASCADE, null = False, db_index = True)
     tag = models.ForeignKey(Tag, on_delete=models.SET_NULL, null = True, default= None, )
     created_at = models.DateTimeField(auto_now_add=True)
     user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name='topics')
@@ -57,7 +57,7 @@ class Topic(models.Model):
         indexes = [
                 models.Index(fields=['category']),
                 models.Index(fields=['category', 'tag', 'user']),
-                models.Index(fields=['created_at']),
+                models.Index(fields=['-created_at']),
 
             ]
     def save(self, *args, **kwargs):

@@ -21,7 +21,7 @@ class TopicListSerializer(serializers.Serializer):
     # comments_count = serializers.SerializerMethodField()
     comments_count = serializers.IntegerField()
     last_comment_timestamp = serializers.SerializerMethodField()
-    likes_count = serializers.SerializerMethodField()
+    likes_count = serializers.IntegerField()
 
     # class Meta:
     #     fields = ["id", last_comment_timestamp
@@ -47,9 +47,9 @@ class TopicListSerializer(serializers.Serializer):
         queryset1 = queryset1.select_related('user')
         # queryset1 = queryset1.prefetch_related(Prefetch('user', queryset = User.objects.all().only('id', 'username')))
         queryset1 = queryset1.select_related('tag')
-        queryset1 = queryset1.prefetch_related('comments').annotate(comments_count = Count('comments'))
+        queryset1 = queryset1.prefetch_related(Prefetch('comments', queryset= Comment.objects.all().only('id', 'topic_id'))).annotate(comments_count = Count('comments'))
         # queryset1 = queryset1.prefetch_related(Prefetch('topiclikes', queryset= TopicLike.objects.all().only('id', 'topic_id')))
-        queryset1 = queryset1.prefetch_related('topiclikes')
+        queryset1 = queryset1.annotate(likes_count =Count('topiclikes'))
         queryset1 = queryset1.defer("category__description", 
                                 "text",
                                 "tag__category_id",
@@ -94,9 +94,11 @@ class TopicListSerializer(serializers.Serializer):
     #     else:
     #         return obj.title
     
-    def get_last_comment_timestamp(self, obj):        
-        return obj.last_comment_or_created
-
+    def get_last_comment_timestamp(self, obj):
+        if obj.comments.exists():
+            return obj.last_comment
+        else:
+            return obj.created_at
         
     def get_likes_count(self, obj):
         return obj.topiclikes.count()

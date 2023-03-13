@@ -13,7 +13,7 @@ from django.core.paginator import Paginator
 from django.db.models import Max
 from django.utils import timezone
 from datetime import timedelta, datetime
-from django.db.models.functions import Coalesce
+
 
 @api_view(['GET','POST'])
 def topics_list(request):
@@ -39,17 +39,15 @@ def topics_list(request):
         else:
             return Response(status = status.HTTP_400_BAD_REQUEST)
         
+        topics = topics.annotate(last_comment=Max('comments__created_at'))
 
         if 'order' in params:
             if params['order'][0] == 'created':
-                comment_order = False
                 topics = topics.order_by('-created_at')
             if params['order'][0] == 'comment':
-                topics = topics.annotate(last_comment_or_created=Coalesce(Max('comments__created_at'), "created_at")).order_by('-last_comment_or_created')
-                comment_order = True
+                topics = topics.order_by('-last_comment', '-created_at')
         else:
             topics = topics.order_by('-created_at')
-            comment_order = False
         if 'tag' in params:
             if params['tag'][0] == 'null':
                 tag = None
@@ -71,7 +69,7 @@ def topics_list(request):
         except Exception as e:
             return Response(status = status.HTTP_400_BAD_REQUEST)
 
-        topics = topics.values_list('id', flat = True)
+        
         paginator = Paginator(topics, offset)
 
 
@@ -80,12 +78,7 @@ def topics_list(request):
         except Exception as e:
             raise Http404      
         
-        paginated_topics_query = TopicListSerializer.setup_eager_loading(Topic.objects.filter(id__in = paginated_topics).annotate(last_comment_or_created=Coalesce(Max('comments__created_at'), "created_at")))
-        if comment_order == True:
-            paginated_topics_query = paginated_topics_query.order_by('-last_comment_or_created')
-        if comment_order == False:
-            paginated_topics_query = paginated_topics_query.order_by('-created_at')
-        # paginated_topics_query = TopicListSerializer.setup_eager_loading(paginated_topics.object_list)
+        paginated_topics_query = TopicListSerializer.setup_eager_loading(paginated_topics.object_list)
         serializer = TopicListSerializer(paginated_topics_query,many=True)
         if paginated_topics.has_next():
             next_url = f"/api/v1/forum/topics?cat={category_slug}&page={page+1}&offset={offset}"
