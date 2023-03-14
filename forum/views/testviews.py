@@ -19,3 +19,7 @@ def test1(request):
         comments1 = baker.make("forum.Comment", user = user, topic = topics, parent = None, _quantity=20, _bulk_create = True)
         x +=1
     return Response(status = status.HTTP_201_CREATED)
+
+def test2(request):
+    comments = baker.make('forum.Comment', topic = Topic.objects.get(id = 1), _quantity=250)
+    return Response(status = status.HTTP_201_CREATED)

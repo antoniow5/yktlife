@@ -1,12 +1,9 @@
 from rest_framework import serializers
-from forum.models import Category, Tag, Topic, TopicLike, Comment, CommentLike
-from django.contrib.auth.models import User
-from rest_framework.exceptions import PermissionDenied
-from django.db.models import Prefetch, Exists, OuterRef, Max, Count
+from forum.models import Category, Tag, Topic, Comment, CommentLike
+from django.db.models import Prefetch, Exists, OuterRef
 import datetime
-from django.db.models import Q
 
-class TopicListSerializer(serializers.Serializer):
+class TopicListCategoryAllSerializer(serializers.Serializer):
     id = serializers.IntegerField()
     created_at = serializers.DateTimeField()
     title = serializers.CharField()
@@ -16,57 +13,40 @@ class TopicListSerializer(serializers.Serializer):
     is_modified = serializers.SerializerMethodField()
     category_slug = serializers.CharField(source = 'category.slug')
     category_name = serializers.CharField(source = 'category.name')
-    tag_name = serializers.SerializerMethodField()
     author_nickname = serializers.SerializerMethodField()
-    # comments_count = serializers.SerializerMethodField()
+    last_comment_or_created = serializers.DateTimeField()
     comments_count = serializers.IntegerField()
-    last_comment_timestamp = serializers.SerializerMethodField()
     likes_count = serializers.SerializerMethodField()
 
-    # class Meta:
-    #     fields = ["id", last_comment_timestamp
-    #               "category_slug", 
-    #               "category_name",
-    #               "tag_name",
-    #               "created_at", 
-    #               "is_modified", 
-    #               "author_nickname", 
-    #               "title", 
-    #               "is_anonymous",
-    #               "comments_count",
-    #               "is_closed",
-    #               "is_removed",
-    #               "",
-    #               "likes_count"
-    #               ]
-    #     read_only_fields = fields
-        # Добавить каунт коммент и дату последнего коммента
+    def get_author_nickname(self, obj):
+        if obj.is_anonymous:
+            return "Аноним"
+        else:
+            return obj.user.username
+        
+    def get_is_modified(self, obj):
+        if obj.modified_at == None:
+            return False
+        else:
+            return True
+        
+    def get_likes_count(self, obj):
+        return obj.topiclikes.count()
     
-    def setup_eager_loading(queryset1):
-        queryset1 = queryset1.select_related('category')
-        queryset1 = queryset1.select_related('user')
-        # queryset1 = queryset1.prefetch_related(Prefetch('user', queryset = User.objects.all().only('id', 'username')))
-        queryset1 = queryset1.select_related('tag')
-        queryset1 = queryset1.prefetch_related('comments').annotate(comments_count = Count('comments'))
-        # queryset1 = queryset1.prefetch_related(Prefetch('topiclikes', queryset= TopicLike.objects.all().only('id', 'topic_id')))
-        queryset1 = queryset1.prefetch_related('topiclikes')
-        queryset1 = queryset1.defer("category__description", 
-                                "text",
-                                "tag__category_id",
-                                "user__password",
-                                "user__last_login",
-                                "user__email",
-                                "user__is_active",
-                                "user__date_joined",
-                                "category__position_column",
-                                "category__position_order", 
-                            )
+class TopicListCategorySpecifiedSerializer(serializers.Serializer):
+    id = serializers.IntegerField()
+    created_at = serializers.DateTimeField()
+    title = serializers.CharField()
+    is_anonymous = serializers.BooleanField()
+    is_closed = serializers.BooleanField()
+    is_removed = serializers.BooleanField()
+    is_modified = serializers.SerializerMethodField()
+    tag_name = serializers.SerializerMethodField()
+    author_nickname = serializers.SerializerMethodField()
+    last_comment_or_created = serializers.DateTimeField()
+    comments_count = serializers.IntegerField()
+    likes_count = serializers.SerializerMethodField()
 
-
-
-                                 
-        return queryset1
-    
     def get_author_nickname(self, obj):
         if obj.is_anonymous:
             return "Аноним"
@@ -84,19 +64,6 @@ class TopicListSerializer(serializers.Serializer):
             return None
         else:
             return obj.tag.name
-    
-    def get_comments_count(self, obj):
-        return obj.comments.count()
-    
-    # def get_title_1(self, obj):
-    #     if obj.is_removed == True:
-    #         return "Данный топик был удален администрацией YktLife."
-    #     else:
-    #         return obj.title
-    
-    def get_last_comment_timestamp(self, obj):        
-        return obj.last_comment_or_created
-
         
     def get_likes_count(self, obj):
         return obj.topiclikes.count()
@@ -104,7 +71,6 @@ class TopicListSerializer(serializers.Serializer):
 class TopicCreateUpdateSerializer(serializers.ModelSerializer):
     category = serializers.SlugField(read_only = False)
     tag = serializers.IntegerField(allow_null = True, read_only = False)
-
 
     class Meta:
         model = Topic
@@ -116,28 +82,27 @@ class TopicCreateUpdateSerializer(serializers.ModelSerializer):
                 raise serializers.ValidationError("Тег не относится к данной категории")
         return data
 
-
     def create(self, validated_data):
-        title = self.validated_data['title']
-        text = self.validated_data['text']
-        is_anonymous = self.validated_data['is_anonymous']
-        category = Category.objects.get(slug = self.validated_data['category']) 
-        # Здесь экспешн
-        if not self.validated_data['tag'] == None:
-            tag = Tag.objects.get(id = self.validated_data['tag'])
+        title = validated_data['title']
+        text = validated_data['text']
+        is_anonymous = validated_data['is_anonymous']
+        category = Category.objects.get(slug = validated_data['category']) 
+        if not validated_data['tag'] == None:
+            tag = Tag.objects.get(id = validated_data['tag'])
         else:
             tag = None
         topic = Topic.objects.create(user= self.context['request'].user, title=title, text=text, category=category, is_anonymous = is_anonymous, tag = tag)
         return topic
 
- 
 
 class CommentListChildHelperSerializer(serializers.ModelSerializer):
+    is_removed = serializers.BooleanField()
+    is_anonymous = serializers.BooleanField()
     author_nickname = serializers.SerializerMethodField()
     text_1 = serializers.SerializerMethodField()
     likes_count = serializers.SerializerMethodField()
     did_like = serializers.BooleanField()
-
+    
     class Meta:
         model = Comment
         fields = [
@@ -166,14 +131,13 @@ class CommentListChildHelperSerializer(serializers.ModelSerializer):
     def get_likes_count(self, obj):
         return obj.commentlikes.all().count()
 
-    # def get_did_like(self, obj):
-    #     return CommentLike.objects.filter(user = self.context['request'].user, comment = obj)
     
 class CommentListHelperSerializer(serializers.ModelSerializer):
+    is_removed = serializers.BooleanField()
+    is_anonymous = serializers.BooleanField()
     author_nickname = serializers.SerializerMethodField()
     text_1 = serializers.SerializerMethodField()
     children = CommentListChildHelperSerializer(many = True)
-    # children1 = serializers.SerializerMethodField()
     likes_count = serializers.SerializerMethodField()
     did_like = serializers.BooleanField()
 
@@ -207,9 +171,6 @@ class CommentListHelperSerializer(serializers.ModelSerializer):
         return obj.commentlikes.all().count()
 
 
-
-
-    
 class TopicCommentsDetailSerializer(serializers.ModelSerializer):
     is_modified = serializers.SerializerMethodField()
     category_slug = serializers.CharField(source = 'category.slug')
@@ -241,9 +202,7 @@ class TopicCommentsDetailSerializer(serializers.ModelSerializer):
                   "likes_count",
                   "did_like",
                   "comments"
-                  ]
-        # Добавить каунт коммент и дату последнего коммента
-    
+                  ]    
    
     def get_author_nickname(self, obj):
         if obj.is_anonymous:
@@ -283,6 +242,7 @@ class TopicCommentsDetailSerializer(serializers.ModelSerializer):
         comments_annotated = comments_annotated.select_related('user').prefetch_related('commentlikes').prefetch_related(Prefetch('children', Comment.objects.filter(topic = obj).annotate(did_like = Exists(CommentLike.objects.filter(user=self.context['request'].user, comment_id=OuterRef('pk')))))).prefetch_related('children__user').prefetch_related('children__commentlikes').annotate(did_like = Exists(CommentLike.objects.filter(user=self.context['request'].user, comment_id=OuterRef('pk')))).filter(parent = None).order_by('created_at')
         return CommentListHelperSerializer(comments_annotated, many = True).data
         
+
 class TopicDetailSerializer(serializers.ModelSerializer):
     is_modified = serializers.SerializerMethodField()
     category_slug = serializers.CharField(source = 'category.slug')
@@ -315,14 +275,7 @@ class TopicDetailSerializer(serializers.ModelSerializer):
                   "likes_count",
                   "did_like"
                   ]
-    
-    def setup_eager_loading(queryset):
-        queryset = queryset.select_related('category')
-        queryset = queryset.select_related('user')
-        queryset = queryset.select_related('tag')
-        queryset = queryset.prefetch_related('comments')
-        return queryset
-    
+        
     def get_author_nickname(self, obj):
         if obj.is_anonymous:
             return "Аноним"
@@ -363,13 +316,16 @@ class TopicDetailSerializer(serializers.ModelSerializer):
     def get_did_like(self, obj):
         return obj.topiclikes.filter(user = self.context['request'].user).exists()
 
+
 class TopicEditSerializer(serializers.ModelSerializer):
+
     class Meta:
         model = Topic
         fields = [                   
                   "title", 
                   "text"
                   ]
+        
     def update(self, instance, validated_data):
         instance.title = validated_data.get('title', instance.title)
         instance.text = validated_data.get('text', instance.text)

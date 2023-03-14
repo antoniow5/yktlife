@@ -1,7 +1,5 @@
 from rest_framework import serializers
 from forum.models import Category, Tag
-from rest_framework.exceptions import PermissionDenied
-from django.db.models import Prefetch, Max
 
 
 class TagHelperSerializer(serializers.ModelSerializer):

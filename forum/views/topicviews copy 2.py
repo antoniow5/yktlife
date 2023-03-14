@@ -10,18 +10,16 @@ from rest_framework.exceptions import PermissionDenied
 from django.http import Http404
 from django.core.paginator import Paginator
 # from .exceptiondicts import responce_dicts
-from django.db.models import Max
+from django.db.models import Max, Count
 from django.utils import timezone
 from datetime import timedelta, datetime
-
+from django.db.models.functions import Coalesce
 
 @api_view(['GET','POST'])
 def topics_list(request):
     if request.method == 'GET':
-        page = 1
-        offset = 20
+
         params = dict(request.query_params)
-        print(params)
         if 'cat' in params:
             if params['cat'][0] == 'all':
                 topics = Topic.objects.all()
@@ -31,6 +29,17 @@ def topics_list(request):
                     category = Category.objects.get(slug = params['cat'][0])
                 except Exception:
                     raise Http404
+                
+                if 'tag' in params:
+                    if params['tag'][0] == 'null':
+                        tag = None
+                    else:
+                        try:
+                            tag = Tag.objects.get(id = int(params['tag'][0]))
+                        except Exception as e:
+                            return Response( status = status.HTTP_400_BAD_REQUEST)
+                    topics = topics.filter(tag = tag)
+                
                 topics = Topic.objects.filter(category = category)
                 category_slug = category.slug
             if not topics.exists():
@@ -39,25 +48,20 @@ def topics_list(request):
         else:
             return Response(status = status.HTTP_400_BAD_REQUEST)
         
-        topics = topics.annotate(last_comment=Max('comments__created_at'))
 
         if 'order' in params:
             if params['order'][0] == 'created':
+                comment_order = False
                 topics = topics.order_by('-created_at')
             if params['order'][0] == 'comment':
-                topics = topics.order_by('-last_comment', '-created_at')
+                topics = topics.annotate(last_comment_or_created=Coalesce(Max('comments__created_at'), "created_at")).order_by('-last_comment_or_created')
+                comment_order = True
         else:
             topics = topics.order_by('-created_at')
-        if 'tag' in params:
-            if params['tag'][0] == 'null':
-                tag = None
-            else:
-                try:
-                    tag = Tag.objects.get(id = int(params['tag'][0]))
-                except Exception as e:
-                    return Response( status = status.HTTP_400_BAD_REQUEST)
-            topics = topics.filter(tag = tag)
-        
+            comment_order = False
+
+        page = 1
+        offset = 20
         try:
             if 'page' in params and int(params['page'][0]) > 0: #вот тут поправить чтобы не было исключений сервера. Пейдж может быть не интом
                 page = int(params['page'][0])
@@ -69,7 +73,7 @@ def topics_list(request):
         except Exception as e:
             return Response(status = status.HTTP_400_BAD_REQUEST)
 
-        
+        topics = topics.values_list('id', flat = True)
         paginator = Paginator(topics, offset)
 
 
@@ -78,7 +82,29 @@ def topics_list(request):
         except Exception as e:
             raise Http404      
         
-        paginated_topics_query = TopicListSerializer.setup_eager_loading(paginated_topics.object_list)
+        paginated_topics_query = Topic.objects.filter(id__in = paginated_topics)
+        paginated_topics_query = paginated_topics_query.annotate(last_comment_or_created=Coalesce(Max('comments__created_at'), "created_at"))
+        paginated_topics_query = paginated_topics_query.select_related('category')
+        paginated_topics_query = paginated_topics_query.select_related('user')
+        paginated_topics_query = paginated_topics_query.select_related('tag')
+        paginated_topics_query = paginated_topics_query.prefetch_related('comments').annotate(comments_count = Count('comments'))
+        paginated_topics_query = paginated_topics_query.prefetch_related('topiclikes')
+        paginated_topics_query = paginated_topics_query.defer("category__description", 
+                                "text",
+                                "tag__category_id",
+                                "user__password",
+                                "user__last_login",
+                                "user__email",
+                                "user__is_active",
+                                "user__date_joined",
+                                "category__position_column",
+                                "category__position_order", 
+                            )
+        if comment_order:
+            paginated_topics_query = paginated_topics_query.order_by('-last_comment_or_created')
+        if not comment_order:
+            paginated_topics_query = paginated_topics_query.order_by('-created_at')
+        # paginated_topics_query = TopicListSerializer.setup_eager_loading(paginated_topics.object_list)
         serializer = TopicListSerializer(paginated_topics_query,many=True)
         if paginated_topics.has_next():
             next_url = f"/api/v1/forum/topics?cat={category_slug}&page={page+1}&offset={offset}"

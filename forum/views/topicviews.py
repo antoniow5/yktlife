@@ -1,16 +1,11 @@
-from django.shortcuts import render
 from rest_framework import status
 from rest_framework.decorators import api_view
 from rest_framework.response import Response
-from forum.serializers import TopicListSerializer, TopicCreateUpdateSerializer, TopicDetailSerializer, TopicCommentsDetailSerializer, TopicEditSerializer
-from ..models import Category, Tag, Topic, Comment
-from rest_framework.permissions import IsAuthenticated, IsAdminUser
-from rest_framework.decorators import permission_classes
+from forum.serializers import TopicListCategoryAllSerializer, TopicListCategorySpecifiedSerializer, TopicCreateUpdateSerializer, TopicDetailSerializer, TopicCommentsDetailSerializer, TopicEditSerializer
+from ..models import Category, Tag, Topic
 from rest_framework.exceptions import PermissionDenied
 from django.http import Http404
-from django.core.paginator import Paginator
-# from .exceptiondicts import responce_dicts
-from django.db.models import Max
+from django.db.models import Max, Count
 from django.utils import timezone
 from datetime import timedelta, datetime
 from django.db.models.functions import Coalesce
@@ -18,28 +13,33 @@ from django.db.models.functions import Coalesce
 @api_view(['GET','POST'])
 def topics_list(request):
     if request.method == 'GET':
-        page = 1
-        offset = 20
         params = dict(request.query_params)
-        print(params)
         if 'cat' in params:
             if params['cat'][0] == 'all':
                 topics = Topic.objects.all()
-                category_slug = 'all'
+                category_specified = False
             else:
                 try:
                     category = Category.objects.get(slug = params['cat'][0])
                 except Exception:
                     raise Http404
                 topics = Topic.objects.filter(category = category)
-                category_slug = category.slug
-            if not topics.exists():
-                content = {"message": "Опубликованных тем еще нет. Стантьте первым!"}
-                return Response(content, status = status.HTTP_204_NO_CONTENT)
+                if not topics.exists():
+                    content = {"message": "Опубликованных тем еще нет. Стантьте первым!"}
+                    return Response(content, status = status.HTTP_204_NO_CONTENT)
+                category_specified = True
+                if 'tag' in params:
+                    if params['tag'][0] == 'null':
+                        tag = None
+                    else:
+                        try:
+                            tag = Tag.objects.get(id = int(params['tag'][0]))
+                        except Exception as e:
+                            return Response( status = status.HTTP_400_BAD_REQUEST)
+                    topics = topics.filter(tag = tag)
         else:
             return Response(status = status.HTTP_400_BAD_REQUEST)
-        
-
+        topics_count = topics.count()
         if 'order' in params:
             if params['order'][0] == 'created':
                 comment_order = False
@@ -50,58 +50,60 @@ def topics_list(request):
         else:
             topics = topics.order_by('-created_at')
             comment_order = False
-        if 'tag' in params:
-            if params['tag'][0] == 'null':
-                tag = None
-            else:
-                try:
-                    tag = Tag.objects.get(id = int(params['tag'][0]))
-                except Exception as e:
-                    return Response( status = status.HTTP_400_BAD_REQUEST)
-            topics = topics.filter(tag = tag)
-        
+
+
+
+        page = 1
+        limit = 20
         try:
-            if 'page' in params and int(params['page'][0]) > 0: #вот тут поправить чтобы не было исключений сервера. Пейдж может быть не интом
+            if 'page' in params and int(params['page'][0]) > 0: 
                 page = int(params['page'][0])
         except Exception as e:
             return Response( status = status.HTTP_400_BAD_REQUEST)
         try:
             if 'offset' in params and int(params['offset'][0]) > 0:
-                offset = int(params['offset'][0])
+                limit = int(params['offset'][0])
         except Exception as e:
             return Response(status = status.HTTP_400_BAD_REQUEST)
 
-        topics = topics.values_list('id', flat = True)
-        paginator = Paginator(topics, offset)
 
 
         try:
-            paginated_topics = paginator.page(page)
+            topics = topics[(page-1)*limit:page*limit]
         except Exception as e:
             raise Http404      
-        
-        paginated_topics_query = TopicListSerializer.setup_eager_loading(Topic.objects.filter(id__in = paginated_topics).annotate(last_comment_or_created=Coalesce(Max('comments__created_at'), "created_at")))
-        if comment_order == True:
+        topic_list = list(topics.values_list('id', flat = True))
+        paginated_topics_query = Topic.objects.filter(id__in = topic_list)
+        paginated_topics_query = paginated_topics_query.annotate(last_comment_or_created=Coalesce(Max('comments__created_at'), "created_at"))
+        paginated_topics_query = paginated_topics_query.select_related('user')
+        paginated_topics_query = paginated_topics_query.annotate(comments_count = Count('comments'))
+        paginated_topics_query = paginated_topics_query.prefetch_related('topiclikes')
+        paginated_topics_query = paginated_topics_query.defer("category__description", 
+                                "text",
+                                "tag__category_id",
+                                "user__password",
+                                "user__last_login",
+                                "user__email",
+                                "user__is_active",
+                                "user__date_joined",
+                                "category__position_column",
+                                "category__position_order", 
+                            )
+        if comment_order:
             paginated_topics_query = paginated_topics_query.order_by('-last_comment_or_created')
-        if comment_order == False:
+        if not comment_order:
             paginated_topics_query = paginated_topics_query.order_by('-created_at')
-        # paginated_topics_query = TopicListSerializer.setup_eager_loading(paginated_topics.object_list)
-        serializer = TopicListSerializer(paginated_topics_query,many=True)
-        if paginated_topics.has_next():
-            next_url = f"/api/v1/forum/topics?cat={category_slug}&page={page+1}&offset={offset}"
+        if category_specified:
+            paginated_topics_query = paginated_topics_query.select_related('tag')
+            serializer = TopicListCategorySpecifiedSerializer(paginated_topics_query,many=True)
         else:
-            next_url = None
-        if paginated_topics.has_previous():
-            previous_url = f"/api/v1/forum/topics?cat={category_slug}&page={page-1}&offset={offset}"
-        else:
-            previous_url = None
+            paginated_topics_query = paginated_topics_query.select_related('category')
+            serializer = TopicListCategoryAllSerializer(paginated_topics_query,many=True)
+
+
         return_dict = { 
-                'pages_num' : paginator.num_pages,
-                'topics_num': paginator.count,
-                'has_next': paginated_topics.has_next(),
-                'has_previous': paginated_topics.has_previous(),
-                'next_url': next_url,
-                'previous_url': previous_url,
+                'pages_num' : (topics_count + limit - 1) // limit,
+                'topics_num': topics_count,
                 'results': serializer.data
             }
 
