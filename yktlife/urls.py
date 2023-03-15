@@ -37,6 +37,13 @@ urlpatterns = [
 
     path('api/v1/forum/topics/<int:id>/like', forum_views.like_topic),
     path('api/v1/forum/topics/<int:id>/like/', forum_views.like_topic),
+
+    re_path('api/v1/forum/comments/$', forum_views.comments_list),
+    path('api/v1/forum/comments/<int:id>', forum_views.comments_detail),
+    path('api/v1/forum/comments/<int:id>/', forum_views.comments_detail),
+
+    path('api/v1/forum/comments/<int:id>/like', forum_views.like_comment),
+    path('api/v1/forum/comments/<int:id>/like/', forum_views.like_comment),
     
     path('test', forum_views.test1),
     path('test2', forum_views.test2),

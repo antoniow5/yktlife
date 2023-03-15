@@ -5,11 +5,10 @@ from forum.serializers import TopicListCategoryAllSerializer, TopicListCategoryS
 from ..models import Category, Tag, Topic
 from rest_framework.exceptions import PermissionDenied
 from django.http import Http404
-from django.db.models import Max, Count, Prefetch
+from django.db.models import Max, Count
 from django.utils import timezone
 from datetime import timedelta, datetime
 from django.db.models.functions import Coalesce
-from django.contrib.auth.models import User
 
 @api_view(['GET','POST'])
 def topics_list(request):
@@ -74,18 +73,20 @@ def topics_list(request):
             topics = topics[(page-1)*limit:page*limit]
         except Exception as e:
             raise Http404      
-        topic_list = list(topics.values('id', 'user_id'))
-        topic_ids = [d['id'] for d in topic_list]
-        user_ids = [d['user_id'] for d in topic_list]
-        users_query = User.objects.filter(id__in = user_ids).only('id', 'username')
-        paginated_topics_query = Topic.objects.filter(id__in = topic_ids)
+        topic_list = list(topics.values_list('id', flat = True))
+        paginated_topics_query = Topic.objects.filter(id__in = topic_list)
         paginated_topics_query = paginated_topics_query.annotate(last_comment_or_created=Coalesce(Max('comments__created_at'), "created_at"))
-        paginated_topics_query = paginated_topics_query.prefetch_related(Prefetch('user', queryset=users_query))
+        paginated_topics_query = paginated_topics_query.select_related('user')
         paginated_topics_query = paginated_topics_query.annotate(comments_count = Count('comments'))
         paginated_topics_query = paginated_topics_query.prefetch_related('topiclikes')
         paginated_topics_query = paginated_topics_query.defer("category__description", 
                                 "text",
                                 "tag__category_id",
+                                "user__password",
+                                "user__last_login",
+                                "user__email",
+                                "user__is_active",
+                                "user__date_joined",
                                 "category__position_column",
                                 "category__position_order", 
                             )

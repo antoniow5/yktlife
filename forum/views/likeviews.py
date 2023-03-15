@@ -24,4 +24,24 @@ def like_topic(request, id):
         else:
             TopicLike.objects.create(user = user, topic = topic)
             return Response(status = status.HTTP_201_CREATED)
+
+@api_view(['POST'])
+def like_comment(request, id):
+    try:
+        comment = Comment.objects.get(id = id)
+    except Comment.DoesNotExist:
+        raise Http404
+    if request.user.is_authenticated:
+        user = request.user
+    else:
+        return Response(status= status.HTTP_401_UNAUTHORIZED)
+
+
+    if request.method == 'POST':
+        if comment.commentlikes.filter(user = user).exists():
+            comment.commentlikes.get(user = user).delete()
+            return Response(status = status.HTTP_204_NO_CONTENT)
+        else:
+            CommentLike.objects.create(user = user, comment = comment)
+            return Response(status = status.HTTP_201_CREATED)
     
