@@ -69,8 +69,8 @@ class TopicListCategorySpecifiedSerializer(serializers.Serializer):
         return obj.topiclikes.count()
     
 class TopicCreateUpdateSerializer(serializers.ModelSerializer):
-    category = serializers.SlugField(read_only = False)
-    tag = serializers.IntegerField(allow_null = True, read_only = False)
+    category = serializers.SlugField(read_only = False, required = True)
+    tag = serializers.IntegerField(allow_null = True, read_only = False, required = True)
 
     class Meta:
         model = Topic

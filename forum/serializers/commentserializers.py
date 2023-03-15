@@ -4,27 +4,29 @@ from django.db.models import Prefetch, Exists, OuterRef
 import datetime
     
 class CommentCreateSerializer(serializers.ModelSerializer):
-    is_anonymous = serializers.BooleanField()
-    parent = serializers.IntegerField(allow_null = True, read_only = False)
-    topic = serializers.IntegerField(allow_null = False)
+    topic = serializers.IntegerField(allow_null = False, required = True)
+    parent = serializers.IntegerField(allow_null = False, required = True)
+
     class Meta:
-        model = Topic
-        fields = ["is_anonymous", "parent", "topic", "is_anonymous", "tag"]
+        model = Comment
+        fields = ["is_anonymous", "parent", "topic", "text"]
 
     def validate(self, data): 
-        if not data['tag'] == None:
-            if not Tag.objects.get(id = data['tag']).category == Category.objects.get(slug = data['category']):
-                raise serializers.ValidationError("Тег не относится к данной категории")
+        if not Topic.objects.get(id = data['topic']) == Comment.objects.get(slug = data['parent']).topic:
+            raise serializers.ValidationError("Parental comment is in another category")
+        if not Comment.objects.get(slug = data['parent']).parent == None:
+            raise serializers.ValidationError("Parental comment is already nested")
         return data
 
     def create(self, validated_data):
-        title = validated_data.get('title')
         text = validated_data.get('text')
         is_anonymous = validated_data.get('is_anonymous')
-        category = Category.objects.get(slug = validated_data.get('category'))
-        if not validated_data.get('tag') == None:
-            tag = Tag.objects.get(id = validated_data.get('tag'))
+        topic = Topic.objects.get(id = validated_data.get('topic'))
+        if not validated_data.get('parent') == None:
+            parent = Comment.objects.get(id = validated_data.get('parent'))
         else:
-            tag = None
-        topic = Topic.objects.create(user= self.context['request'].user, title=title, text=text, category=category, is_anonymous = is_anonymous, tag = tag)
-        return topic
+            parent = None
+        comment = Comment.objects.create(user= self.context['request'].user, text=text, is_anonymous = is_anonymous, parent = parent, topic = topic)
+        return comment
+
+class CommentCategorySpecifiedTopicSpecified 
