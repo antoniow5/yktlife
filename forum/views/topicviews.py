@@ -83,7 +83,8 @@ def topics_list(request):
         paginated_topics_query = paginated_topics_query.prefetch_related(Prefetch('user', queryset=users_query))
         paginated_topics_query = paginated_topics_query.annotate(comments_count = Count('comments'))
         paginated_topics_query = paginated_topics_query.prefetch_related('topiclikes')
-        paginated_topics_query = paginated_topics_query.defer("category__description", 
+        paginated_topics_query = paginated_topics_query.defer(
+                                "category__description", 
                                 "text",
                                 "tag__category_id",
                                 "category__position_column",

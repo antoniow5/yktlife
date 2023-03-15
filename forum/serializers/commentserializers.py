@@ -29,5 +29,8 @@ class CommentCreateSerializer(serializers.ModelSerializer):
         comment = Comment.objects.create(user= self.context['request'].user, text=text, is_anonymous = is_anonymous, parent = parent, topic = topic)
         return comment
 
-class CommentCategorySpecifiedTopicSpecified(serializers.ModelSerializer):
+class CommentSpecifiedTopicSerializer(serializers.ModelSerializer):
+    pass
+
+class CommentSpecifiedCategorySerializer(serializers.ModelSerializer):
     pass
