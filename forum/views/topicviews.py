@@ -93,6 +93,7 @@ def topics_list(request):
                                 "tag__category_id",
                                 "category__position_column",
                                 "category__position_order", 
+                                "category__user_can_post"
                             )
         if comment_order:
             paginated_topics_query = paginated_topics_query.order_by('-last_comment_or_created')

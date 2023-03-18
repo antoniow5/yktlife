@@ -206,7 +206,6 @@ class TopicCommentsDetailSerializer(serializers.ModelSerializer):
                   "is_anonymous",
                   "comments_count",
                   "is_closed",
-                #   "is_removed",
                   "modified_at",
                   "likes_count",
                   "did_like",
