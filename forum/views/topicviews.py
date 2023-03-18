@@ -1,7 +1,7 @@
 from rest_framework import status
 from rest_framework.decorators import api_view
 from rest_framework.response import Response
-from forum.serializers import TopicListCategoryAllSerializer, TopicListCategorySpecifiedSerializer, TopicCreateUpdateSerializer, TopicDetailSerializer, TopicCommentsDetailSerializer, TopicEditSerializer
+from forum.serializers import TopicListCategoryAllSerializer, TopicListCategorySpecifiedSerializer, TopicCreateSerializer, TopicDetailSerializer, TopicCommentsDetailSerializer, TopicEditSerializer
 from ..models import Category, Tag, Topic
 from rest_framework.exceptions import PermissionDenied
 from django.http import Http404
@@ -18,8 +18,12 @@ def topics_list(request):
         print(params)
         if 'cat' in params:
             if params['cat'][0] == 'all':
-                topics = Topic.objects.all()
+                topics = Topic.objects.all().filter(is_pinned = False)
                 category_specified = False
+            # elif params['cat'][0] == 'best':
+            #     pass
+            
+
             else:
                 try:
                     category = Category.objects.get(slug = params['cat'][0])
@@ -45,12 +49,12 @@ def topics_list(request):
         if 'order' in params and (params['order'][0] == 'created' or params['order'][0] == 'comment'): # и равен либо тому либо этому
             if params['order'][0] == 'created':
                 comment_order = False
-                topics = topics.order_by('-created_at')
+                topics = topics.order_by('is_pinned', '-created_at')
             if params['order'][0] == 'comment':
-                topics = topics.annotate(last_comment_or_created=Coalesce(Max('comments__created_at'), "created_at")).order_by('-last_comment_or_created')
+                topics = topics.annotate(last_comment_or_created=Coalesce(Max('comments__created_at'), "created_at")).order_by('is_pinned','-last_comment_or_created')
                 comment_order = True
         else:
-            topics = topics.order_by('-created_at')
+            topics = topics.order_by('is_pinned', '-created_at')
             comment_order = False
 
 
@@ -74,14 +78,14 @@ def topics_list(request):
             topics = topics[(page-1)*limit:page*limit]
         except Exception as e:
             raise Http404      
-        topic_list = list(topics.values('id', 'user_id'))
-        topic_ids = [d['id'] for d in topic_list]
-        user_ids = [d['user_id'] for d in topic_list]
-        users_query = User.objects.filter(id__in = user_ids).only('id', 'username')
-        paginated_topics_query = Topic.objects.filter(id__in = topic_ids)
+        topic_list = list(topics.values_list('id', flat=True))
+        # topic_ids = [d['id'] for d in topic_list]
+        # user_ids = [d['user_id'] for d in topic_list]
+        # users_query = User.objects.filter(id__in = user_ids).only('id', 'username')
+        paginated_topics_query = Topic.objects.filter(id__in = topic_list)
         paginated_topics_query = paginated_topics_query.annotate(last_comment_or_created=Coalesce(Max('comments__created_at'), "created_at"))
-        paginated_topics_query = paginated_topics_query.prefetch_related(Prefetch('user', queryset=users_query))
-        paginated_topics_query = paginated_topics_query.annotate(comments_count = Count('comments'))
+        paginated_topics_query = paginated_topics_query.select_related('user')
+        paginated_topics_query = paginated_topics_query.prefetch_related('comments')#annotate(comments_count = Count('comments'))
         paginated_topics_query = paginated_topics_query.prefetch_related('topiclikes')
         paginated_topics_query = paginated_topics_query.defer(
                                 "category__description", 
@@ -113,11 +117,13 @@ def topics_list(request):
     elif(request.method == 'POST'):
         if request.user.is_authenticated:
             if request.user.is_superuser:
-
-                serializer = TopicCreateUpdateSerializer(data = request.data, context = {'request':request})
+                serializer = TopicCreateSerializer(data = request.data, context = {'request':request})
             else:
                 if not Category.objects.get(slug=request.data['category']).can_post:
                     raise PermissionDenied
+                if request.data['is_pinned'] == True:
+                    raise PermissionDenied
+                serializer = TopicCreateSerializer(data = request.data, context = {'request':request})
             if serializer.is_valid():
                 serializer.save()
                 return Response(status= status.HTTP_201_CREATED)

@@ -23,3 +23,6 @@ def test1(request):
 def test2(request):
     comments = baker.make('forum.Comment', topic = Topic.objects.get(id = 1), _quantity=250)
     return Response(status = status.HTTP_201_CREATED)
+
+def test3(request):
+    print(request.auth)

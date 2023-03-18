@@ -10,8 +10,9 @@ class Category(models.Model):
     description = models.CharField(max_length = 1000)
     position_column = models.PositiveSmallIntegerField()
     position_order = models.PositiveSmallIntegerField()
-    can_post = models.BooleanField(default = True)
-    can_comment = models.BooleanField(default = True)
+    users_can_post = models.BooleanField(default = True)
+    users_can_comment = models.BooleanField(default = True)
+    max_comment = models.PositiveSmallIntegerField(default = 250)
     # can_like = models.BooleanField(default=True)
     
     # Логотип
@@ -37,9 +38,19 @@ class Category(models.Model):
 class Tag(models.Model):
     category = models.ForeignKey(Category, on_delete=models.CASCADE)
     name = models.CharField(max_length= 20)    #Проверить по дизайну максимальную длину названия
+    order = models.PositiveSmallIntegerField()
 
     def __str__(self):
         return self.category.name + ' /' + self.name + ' [' + str(self.id) + ']'  
+    
+    def save(self, *args, **kwargs):
+        update_tags = Tag.objects.filter(category = self.category)
+        for update_tag in update_tags:
+            if update_tag.order >= self.order:
+                update_tag.order += 1
+                update_tag.save()
+        super(Tag, self).save(*args, **kwargs)
+
 
 
 class Topic(models.Model):
@@ -52,7 +63,8 @@ class Topic(models.Model):
     is_anonymous = models.BooleanField(default=False)
     modified_at = models.DateTimeField(null=True, default = None)
     is_closed = models.BooleanField(default=False)
-    is_removed = models.BooleanField(default = False)
+    is_pinned = models.BooleanField(default = False)
+    is_best = models.BooleanField(default = False)
     class Meta:
         indexes = [
                 models.Index(fields=['category']),
@@ -84,7 +96,11 @@ class Comment(models.Model):
                 raise ValueError
             if not self.parent.topic == self.topic:
                 raise ValueError
+        if (self.topic.comments.all().count() >= self.topic.category.max_comment) and (not self.topic.is_closed):
+            self.topic.is_closed = True
+            self.topic.save()
         super(Comment, self).save(*args, **kwargs)
+
     class Meta:
         indexes = [
                 models.Index(fields=['created_at']),
